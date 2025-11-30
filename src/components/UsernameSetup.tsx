@@ -139,10 +139,10 @@ const UsernameSetup = ({ onUsernameSet }: UsernameSetupProps) => {
             <User className="w-8 h-8 text-white" />
           </div>
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            Choose Your Username
+            Enter Your Real Name
           </CardTitle>
           <CardDescription className="text-gray-400">
-            This username will be permanently linked to this device
+            Your name will be permanently linked to this device (max 10 characters)
           </CardDescription>
         </CardHeader>
         
@@ -150,19 +150,19 @@ const UsernameSetup = ({ onUsernameSet }: UsernameSetupProps) => {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="username" className="text-sm font-medium">
-                Username
+                Real Name
               </Label>
               <div className="relative">
                 <Input
                   id="username"
                   type="text"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your username"
+                  onChange={(e) => setUsername(e.target.value.slice(0, 10))}
+                  placeholder="Enter your real name"
                   className="bg-secondary/50 border-white/10 text-white placeholder:text-gray-500 pr-10"
                   disabled={isSetting}
                   minLength={2}
-                  maxLength={20}
+                  maxLength={10}
                 />
                 {getStatusIcon() && (
                   <div className={`absolute right-3 top-1/2 transform -translate-y-1/2 ${getStatusColor()}`}>
@@ -177,8 +177,8 @@ const UsernameSetup = ({ onUsernameSet }: UsernameSetupProps) => {
 
             <Alert className="bg-blue-500/10 border-blue-500/20 text-blue-300">
               <AlertDescription className="text-sm">
-                <strong>Important:</strong> Your username will be permanently associated with this device's unique code. 
-                You cannot change it later, and no one else can use the same username.
+                <strong>Important:</strong> Your real name will be permanently associated with this device's unique code. 
+                You cannot change it later, and no one else can use the same name. Max 10 characters.
               </AlertDescription>
             </Alert>
 
@@ -187,7 +187,7 @@ const UsernameSetup = ({ onUsernameSet }: UsernameSetupProps) => {
               className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-3 h-12 hover:from-purple-700 hover:to-pink-700 disabled:opacity-50"
               disabled={isSetting || isAvailable === false || username.trim().length < 2}
             >
-              {isSetting ? "Setting Username..." : "Set Username Permanently"}
+              {isSetting ? "Setting Name..." : "Set Real Name Permanently"}
             </Button>
           </form>
         </CardContent>

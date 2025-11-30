@@ -1,7 +1,6 @@
-import React, { useState, useRef } from "react";
-import { Upload, X, FileText, Image, Video, File } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { Upload, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { content } from "@/lib/shared/kliv-content.js";
 import db from "@/lib/shared/kliv-database.js";
@@ -9,38 +8,39 @@ import { getDeviceId } from "@/lib/deviceId";
 
 interface FileUploadProps {
   roomId: number;
+  roomType: string;
   username: string;
   onFileUploaded: () => void;
 }
 
-interface UploadedFile {
-  _row_id: number;
-  filename: string;
-  original_name: string;
-  file_size: number;
-  file_type: string;
-  uploaded_by: string;
-  device_id: string | null;
-  _created_at: number;
+interface Setting {
+  setting_key: string;
+  setting_value: string;
 }
 
-const FileUpload = ({ roomId, username, onFileUploaded }: FileUploadProps) => {
+const FileUpload = ({ roomId, roomType, username, onFileUploaded }: FileUploadProps) => {
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
+  const [settings, setSettings] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const getFileIcon = (fileType: string) => {
-    if (fileType.startsWith('image/')) {
-      return <Image className="w-4 h-4 text-blue-400" />;
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const data = await db.query('admin_settings', {});
+      const map: Record<string, string> = {};
+      data.forEach((s: Setting) => { map[s.setting_key] = s.setting_value; });
+      setSettings(map);
+    } catch (error) {
+      console.error('Error loading settings:', error);
     }
-    if (fileType.startsWith('video/')) {
-      return <Video className="w-4 h-4 text-green-400" />;
-    }
-    if (fileType.startsWith('text/') || fileType.includes('document')) {
-      return <FileText className="w-4 h-4 text-yellow-400" />;
-    }
-    return <File className="w-4 h-4 text-gray-400" />;
   };
+
+  const getBool = (key: string) => settings[key] === 'true';
+  const getNum = (key: string) => parseInt(settings[key] || '10', 10);
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -50,15 +50,40 @@ const FileUpload = ({ roomId, username, onFileUploaded }: FileUploadProps) => {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
+  const isMediaFile = (fileType: string): boolean => {
+    return fileType.startsWith('image/') || fileType.startsWith('video/');
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // File size limit (10MB)
-    if (file.size > 10 * 1024 * 1024) {
+    // Check if files are allowed
+    if (settings.files_allowed === 'false') {
+      toast({
+        title: "Files Disabled",
+        description: "File uploads are currently disabled",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Only allow images and videos
+    if (!isMediaFile(file.type)) {
+      toast({
+        title: "Only Photos & Videos",
+        description: "Only image and video files are allowed for safety",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // File size limit from settings
+    const maxSize = getNum('file_size_limit_mb') * 1024 * 1024;
+    if (file.size > maxSize) {
       toast({
         title: "File too large",
-        description: "Please keep files under 10MB",
+        description: `Max size is ${getNum('file_size_limit_mb')}MB`,
         variant: "destructive",
       });
       return;
@@ -69,40 +94,88 @@ const FileUpload = ({ roomId, username, onFileUploaded }: FileUploadProps) => {
     try {
       const deviceId = getDeviceId();
       
+      console.log("Starting file upload:", file.name, file.type, file.size);
+      
       // Upload file to content storage
       const result = await content.uploadFile(file, '/content/chat_files/');
       
-      // Save file info to database
-      await db.insert("uploaded_files", {
-        filename: result.filename,
-        original_name: file.name,
-        file_size: file.size,
-        file_type: file.type,
-        room_id: roomId,
-        uploaded_by: username,
-        device_id: deviceId,
-      });
+      console.log("Upload result:", result);
+      
+      if (!result || !result.filename) {
+        throw new Error("Upload did not return a valid filename");
+      }
+      
+      // Check if this is a public room and needs approval
+      const requiresApproval = roomType === 'public' && getBool('require_file_approval_public');
 
-      // Send message about file
-      await db.insert("messages", {
-        room_id: roomId,
-        sender_name: username,
-        content: `📎 Shared a file: ${file.name} (${formatFileSize(file.size)})`,
-        is_ai: 0,
-        device_id: deviceId,
-      });
+      if (requiresApproval) {
+        // Add to pending files for admin approval
+        await db.insert("pending_files", {
+          filename: result.filename,
+          original_name: file.name,
+          file_size: file.size,
+          file_type: file.type,
+          room_id: roomId,
+          room_type: roomType,
+          uploaded_by: username,
+          device_id: deviceId,
+          status: 'pending'
+        });
 
-      toast({
-        title: "File uploaded!",
-        description: `${file.name} has been shared`,
-      });
+        toast({
+          title: "📤 File Submitted",
+          description: "Admin will review before it shows in chat",
+        });
+      } else {
+        // Direct upload for private rooms or if approval not required
+        await db.insert("uploaded_files", {
+          filename: result.filename,
+          original_name: file.name,
+          file_size: file.size,
+          file_type: file.type,
+          room_id: roomId,
+          uploaded_by: username,
+          device_id: deviceId,
+        });
+
+        // Send message about file
+        const icon = file.type.startsWith('image/') ? '🖼️' : '🎬';
+        await db.insert("messages", {
+          room_id: roomId,
+          sender_name: username,
+          content: `${icon} Shared: ${file.name} (${formatFileSize(file.size)})`,
+          is_ai: 0,
+          device_id: deviceId,
+        });
+
+        toast({
+          title: "✅ File shared!",
+          description: file.name,
+        });
+      }
+      
+      // Log activity
+      try {
+        await db.insert("ip_activity_logs", {
+          device_id: deviceId,
+          username: username,
+          action: "file_upload",
+          room_id: roomId,
+          message_preview: file.name,
+        });
+      } catch (logErr) {
+        console.log("IP log failed:", logErr);
+      }
       
       onFileUploaded();
-    } catch (error) {
-      console.log("Error uploading file:", error);
+    } catch (error: unknown) {
+      console.error("File upload error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast({
-        title: "Upload failed",
-        description: "Failed to upload file",
+        title: "❌ Upload failed",
+        description: errorMessage.includes("filename") 
+          ? "Could not save file. Please try again."
+          : `Error: ${errorMessage}`,
         variant: "destructive",
       });
     } finally {
@@ -117,6 +190,11 @@ const FileUpload = ({ roomId, username, onFileUploaded }: FileUploadProps) => {
     fileInputRef.current?.click();
   };
 
+  // Don't show if files are disabled
+  if (settings.files_allowed === 'false') {
+    return null;
+  }
+
   return (
     <div className="flex gap-2">
       <input
@@ -124,19 +202,27 @@ const FileUpload = ({ roomId, username, onFileUploaded }: FileUploadProps) => {
         type="file"
         onChange={handleFileSelect}
         className="hidden"
-        accept="image/*,video/*,.pdf,.txt,.doc,.docx"
+        accept="image/*,video/*"
       />
       <Button
         variant="outline"
         size="icon"
         onClick={handleUploadClick}
         disabled={isUploading}
-        className="h-10 w-10"
+        className="h-10 w-10 relative"
+        title={roomType === 'public' ? 'Files need admin approval' : 'Upload photo/video'}
       >
         {isUploading ? (
           <div className="animate-spin w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full" />
         ) : (
-          <Upload className="w-4 h-4" />
+          <>
+            <Upload className="w-4 h-4" />
+            {roomType === 'public' && getBool('require_file_approval_public') && (
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-2 h-2 text-black" />
+              </div>
+            )}
+          </>
         )}
       </Button>
     </div>

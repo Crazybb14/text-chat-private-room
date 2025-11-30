@@ -14,6 +14,7 @@ import PushNotificationManager from "@/lib/pushNotifications";
 import RealTimePushNotifications from "@/lib/realTimePushNotifications";
 import superBanSystem from "@/lib/superAdvancedBanSystem";
 import UserManager from "@/lib/userManagement";
+import { filterContent, FilterSettings } from "@/lib/contentFilter";
 
 interface Message {
   _row_id: number;
@@ -54,6 +55,11 @@ interface Room {
   type: string;
 }
 
+interface Setting {
+  setting_key: string;
+  setting_value: string;
+}
+
 const ChatRoom = () => {
   const { roomId } = useParams();
   const navigate = useNavigate();
@@ -69,9 +75,27 @@ const ChatRoom = () => {
   const [isSending, setIsSending] = useState(false);
   const [isBanned, setIsBanned] = useState(false);
   const [isCrashed, setIsCrashed] = useState(false);
-  const [crashCountdown, setCrashCountdown] = useState(10);
+  const [crashCountdown, setCrashCountdown] = useState(1);
+  const [adminSettings, setAdminSettings] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Load admin settings for content filtering
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const data = await db.query('admin_settings', {});
+        const map: Record<string, string> = {};
+        data.forEach((s: Setting) => { map[s.setting_key] = s.setting_value; });
+        setAdminSettings(map);
+      } catch (error) {
+        console.error('Error loading settings:', error);
+      }
+    };
+    loadSettings();
+    const interval = setInterval(loadSettings, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Listen for admin crash command
   useEffect(() => {
@@ -202,6 +226,20 @@ const ChatRoom = () => {
         return;
       }
       setRoom(rooms[0]);
+      
+      // Log room join for IP tracking
+      const device = getDeviceId();
+      try {
+        await db.insert("ip_activity_logs", {
+          device_id: device,
+          username: localStorage.getItem("chatUsername") || "Unknown",
+          action: "room_join",
+          room_id: parseInt(roomId!),
+          message_preview: rooms[0].name,
+        });
+      } catch (logErr) {
+        console.log("IP log failed:", logErr);
+      }
     } catch (error) {
       console.log("Error loading room:", error);
     }
@@ -363,8 +401,67 @@ const ChatRoom = () => {
     if (!newMessage.trim() || isBanned) return;
 
     setIsSending(true);
-    const messageContent = newMessage.trim();
+    let messageContent = newMessage.trim();
     setNewMessage("");
+
+    // Content safety filter - check for personal info
+    const filterSettings: Partial<FilterSettings> = {
+      block_phone_numbers: adminSettings.block_phone_numbers === 'true',
+      block_emails: adminSettings.block_emails === 'true',
+      block_addresses: adminSettings.block_addresses === 'true',
+      block_social_security: adminSettings.block_social_security === 'true',
+      block_credit_cards: adminSettings.block_credit_cards === 'true',
+      block_ip_addresses: adminSettings.block_ip_addresses === 'true',
+      profanity_filter: adminSettings.profanity_filter === 'true',
+    };
+
+    const filterResult = filterContent(messageContent, filterSettings);
+    
+    if (filterResult.blocked) {
+      toast({
+        title: "🚫 Message Blocked",
+        description: `Content blocked: ${filterResult.reasons.join(', ')}`,
+        variant: "destructive",
+      });
+      
+      // Check if instant ban for personal info
+      if (adminSettings.instant_ban_personal_info === 'true' && filterResult.reasons.some(r => r.includes('CRITICAL'))) {
+        await db.insert("bans", {
+          username: username,
+          device_id: deviceId,
+          room_id: null,
+          ban_reason: `Personal info shared: ${filterResult.reasons.filter(r => r.includes('CRITICAL')).join(', ')}`,
+          message_content: messageContent,
+          ban_duration: 86400, // 24 hours
+        });
+        
+        // Log the activity
+        try {
+          await db.insert("ip_activity_logs", {
+            device_id: deviceId,
+            username: username,
+            action: "banned_pii",
+            room_id: parseInt(roomId!),
+            message_preview: messageContent.substring(0, 50),
+          });
+        } catch (logErr) {
+          console.log("IP log failed:", logErr);
+        }
+        
+        setIsBanned(true);
+        toast({
+          title: "⛔ You have been banned",
+          description: "Sharing personal information is not allowed",
+          variant: "destructive",
+        });
+      }
+      
+      setIsSending(false);
+      return;
+    }
+
+    // Use filtered content (profanity replaced)
+    messageContent = filterResult.filteredContent;
 
     // Super Advanced Auto-Ban Check (5x better!)
     const shouldBlock = await processAutoBan(username, deviceId, messageContent, parseInt(roomId!));
@@ -383,6 +480,20 @@ const ChatRoom = () => {
         is_ai: 0,
         device_id: deviceId,
       });
+
+      // Log IP activity for admin tracking
+      try {
+        await db.insert("ip_activity_logs", {
+          device_id: deviceId,
+          username: username,
+          action: "message",
+          room_id: parseInt(roomId!),
+          message_preview: messageContent.substring(0, 50),
+        });
+      } catch (logError) {
+        // Silently fail - don't block messages if logging fails
+        console.log("IP logging failed:", logError);
+      }
 
       loadMessages();
     } catch (error) {
@@ -440,7 +551,7 @@ const ChatRoom = () => {
           <div className="mt-8 w-64 h-2 bg-gray-800 rounded-full mx-auto overflow-hidden">
             <div 
               className="h-full bg-gradient-to-r from-red-500 to-orange-500 transition-all duration-1000"
-              style={{ width: `${(10 - crashCountdown) * 10}%` }}
+              style={{ width: `${(1 - crashCountdown) * 100}%` }}
             />
           </div>
         </div>
@@ -535,6 +646,7 @@ const ChatRoom = () => {
         <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex gap-3">
           <FileUpload
             roomId={parseInt(roomId!)}
+            roomType={room?.type || 'public'}
             username={username}
             onFileUploaded={loadMessages}
           />

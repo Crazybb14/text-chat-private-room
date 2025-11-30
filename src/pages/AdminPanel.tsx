@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, LogOut, MessageSquare, Ban, Plus, Lightbulb, Scale, Bell, FileText, AlertTriangle, Send, Zap } from "lucide-react";
+import { Shield, LogOut, MessageSquare, Ban, Plus, Lightbulb, Scale, Bell, FileText, AlertTriangle, Send, Zap, Settings, Image, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,9 @@ import AdminThreatMonitor from "@/components/AdminThreatMonitor";
 import AdminFileModeration from "@/components/AdminFileModeration";
 import AdminMessaging from "@/components/AdminMessaging";
 import AdminQuickActions from "@/components/AdminQuickActions";
+import AdminSettings from "@/components/AdminSettings";
+import AdminFileApproval from "@/components/AdminFileApproval";
+import AdminIPLogger from "@/components/AdminIPLogger";
 
 interface Room {
   _row_id: number;
@@ -77,6 +80,49 @@ const AdminPanel = () => {
   const [newRoomType, setNewRoomType] = useState<"public" | "private">("private");
   const [banUsername, setBanUsername] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [isCrashed, setIsCrashed] = useState(false);
+  const [crashCountdown, setCrashCountdown] = useState(1);
+
+  // Listen for crash command (crashes admin too!)
+  useEffect(() => {
+    const handleCrash = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setIsCrashed(true);
+      setCrashCountdown(Math.ceil(detail.duration / 1000));
+      
+      const countdownInterval = setInterval(() => {
+        setCrashCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownInterval);
+            setIsCrashed(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    };
+
+    window.addEventListener('admin_crash', handleCrash);
+    
+    // Also listen to broadcast channel
+    if ('BroadcastChannel' in window) {
+      const channel = new BroadcastChannel('admin_commands');
+      channel.onmessage = (event) => {
+        if (event.data.type === 'CRASH_ALL') {
+          setIsCrashed(true);
+          setCrashCountdown(Math.ceil(event.data.duration / 1000));
+          
+          setTimeout(() => {
+            setIsCrashed(false);
+          }, event.data.duration);
+        }
+      };
+    }
+
+    return () => {
+      window.removeEventListener('admin_crash', handleCrash);
+    };
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -318,6 +364,46 @@ const AdminPanel = () => {
     navigate("/admin");
   };
 
+  // Crash screen for admin
+  if (isCrashed) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-red-900/50 via-black to-red-900/50 animate-pulse" />
+        <div className="absolute inset-0">
+          {Array.from({ length: 20 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute h-1 bg-red-500/30"
+              style={{
+                top: `${Math.random() * 100}%`,
+                left: 0,
+                right: 0,
+                animation: `glitch ${0.1 + Math.random() * 0.3}s infinite`
+              }}
+            />
+          ))}
+        </div>
+        <div className="relative z-10 text-center">
+          <div className="text-8xl mb-8 animate-bounce">💥</div>
+          <h1 className="text-6xl font-bold text-red-500 mb-4 animate-pulse" style={{ textShadow: '0 0 20px rgba(239, 68, 68, 0.8)' }}>
+            ADMIN CRASHED
+          </h1>
+          <p className="text-2xl text-red-400 mb-8">You crashed yourself!</p>
+          <div className="text-9xl font-mono font-bold text-white mb-4">
+            {crashCountdown}
+          </div>
+          <p className="text-xl text-gray-400">Reconnecting...</p>
+        </div>
+        <style>{`
+          @keyframes glitch {
+            0%, 100% { transform: translateX(0); opacity: 0.3; }
+            50% { transform: translateX(10px); opacity: 0.7; }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Background gradient */}
@@ -367,6 +453,10 @@ const AdminPanel = () => {
               <FileText className="w-4 h-4 mr-2" />
               Files
             </TabsTrigger>
+            <TabsTrigger value="file-approval" className="data-[state=active]:bg-teal-600">
+              <Image className="w-4 h-4 mr-2" />
+              File Approval
+            </TabsTrigger>
             <TabsTrigger value="threats" className="data-[state=active]:bg-orange-600">
               <AlertTriangle className="w-4 h-4 mr-2" />
               Threats
@@ -382,6 +472,14 @@ const AdminPanel = () => {
             <TabsTrigger value="notifications" className="data-[state=active]:bg-green-600">
               <Bell className="w-4 h-4 mr-2" />
               Notifications
+            </TabsTrigger>
+            <TabsTrigger value="ip-logger" className="data-[state=active]:bg-cyan-600">
+              <MapPin className="w-4 h-4 mr-2" />
+              IP Logger
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="data-[state=active]:bg-violet-600">
+              <Settings className="w-4 h-4 mr-2" />
+              Settings
             </TabsTrigger>
           </TabsList>
 
@@ -526,6 +624,21 @@ const AdminPanel = () => {
               bans={bans}
               onBanUserClick={handleBanUser}
             />
+          </TabsContent>
+          
+          {/* File Approval Tab */}
+          <TabsContent value="file-approval">
+            <AdminFileApproval />
+          </TabsContent>
+          
+          {/* IP Logger Tab */}
+          <TabsContent value="ip-logger">
+            <AdminIPLogger />
+          </TabsContent>
+          
+          {/* Settings Tab */}
+          <TabsContent value="settings">
+            <AdminSettings />
           </TabsContent>
         </Tabs>
       </main>

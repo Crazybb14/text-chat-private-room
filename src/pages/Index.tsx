@@ -35,7 +35,7 @@ const Index = () => {
 
   // Crash screen state
   const [isCrashed, setIsCrashed] = useState(false);
-  const [crashCountdown, setCrashCountdown] = useState(10);
+  const [crashCountdown, setCrashCountdown] = useState(1);
 
   // Initialize desktop notifications and check ban status
   useEffect(() => {
@@ -228,7 +228,7 @@ const Index = () => {
           <div className="mt-8 w-64 h-2 bg-gray-800 rounded-full mx-auto overflow-hidden">
             <div 
               className="h-full bg-gradient-to-r from-red-500 to-orange-500 transition-all duration-1000"
-              style={{ width: `${(10 - crashCountdown) * 10}%` }}
+              style={{ width: `${(1 - crashCountdown) * 100}%` }}
             />
           </div>
         </div>
