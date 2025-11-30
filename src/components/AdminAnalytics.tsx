@@ -97,8 +97,30 @@ const AdminAnalytics = () => {
     return Object.values(dailyData);
   };
 
-  const processUserGrowth = (users: any[]) => {
-    const growth = users.reduce((acc: Record<string, number>, user: any) => {
+  interface UserData {
+    first_seen: number;
+    last_active: number;
+  }
+
+  interface MessageData {
+    _row_id: number;
+    room_id: number;
+    _created_at: number;
+  }
+
+  interface RoomData {
+    _row_id: number;
+    name: string;
+    type: string;
+  }
+
+  interface FileData {
+    file_type: string;
+    timestamp: number;
+  }
+
+  const processUserGrowth = (users: UserData[]) => {
+    const growth = users.reduce((acc: Record<string, number>, user: UserData) => {
       const date = new Date(user.first_seen).toISOString().split('T')[0];
       acc[date] = (acc[date] || 0) + 1;
       return acc;
@@ -110,7 +132,7 @@ const AdminAnalytics = () => {
     })).slice(-30); // Last 30 days
   };
 
-  const processMessageStats = (messages: any[]) => {
+  const processMessageStats = (messages: MessageData[]) => {
     const hourlyStats = Array.from({ length: 24 }, (_, hour) => ({
       hour: `${hour}:00`,
       messages: 0
@@ -124,7 +146,7 @@ const AdminAnalytics = () => {
     return hourlyStats;
   };
 
-  const processRoomActivity = (rooms: any[], messages: any[]) => {
+  const processRoomActivity = (rooms: RoomData[], messages: MessageData[]) => {
     return rooms.map(room => {
       const roomMessages = messages.filter(msg => msg.room_id === room._row_id);
       return {
@@ -135,7 +157,7 @@ const AdminAnalytics = () => {
     }).sort((a, b) => b.messages - a.messages);
   };
 
-  const processFileTypeStats = (files: any[]) => {
+  const processFileTypeStats = (files: FileData[]) => {
     const typeStats: Record<string, number> = {};
     
     files.forEach(file => {
@@ -269,7 +291,7 @@ const AdminAnalytics = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {analytics.roomActivity.slice(0, 5).map((room: any, index: number) => (
+              {analytics.roomActivity.slice(0, 5).map((room: {name: string; messages: number; type: string}, index: number) => (
                 <div key={room.name} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <span className="text-lg font-bold text-gray-400">#{index + 1}</span>
@@ -307,7 +329,7 @@ const AdminAnalytics = () => {
                   dataKey="value"
                   label={({ name, percentage }) => `${name}: ${percentage}%`}
                 >
-                  {analytics.fileTypeStats.map((entry: any, index: number) => (
+                  {analytics.fileTypeStats.map((entry: {name: string; value: number; percentage: number}, index: number) => (
                     <Cell key={`cell-${index}`} fill={['#8b5cf6', '#ec4899', '#06b6d4', '#10b981', '#f59e0b'][index % 5]} />
                   ))}
                 </Pie>

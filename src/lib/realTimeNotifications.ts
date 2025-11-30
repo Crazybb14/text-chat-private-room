@@ -123,16 +123,21 @@ class RealTimeNotifications {
       return true;
     }
 
+    interface BanRecord {
+      _row_id: number;
+      expires_at: number | null;
+    }
+
     if (announcement.target_audience === 'banned_users') {
-      const bans = await db.query('bans', { device_id: `eq.${deviceId}` });
+      const bans = await db.query('bans', { device_id: `eq.${deviceId}` }) as BanRecord[];
       const now = Date.now();
-      return bans.some((ban: any) => !ban.expires_at || ban.expires_at > now);
+      return bans.some((ban: BanRecord) => !ban.expires_at || ban.expires_at > now);
     }
 
     if (announcement.target_audience === 'active_users') {
-      const bans = await db.query('bans', { device_id: `eq.${deviceId}` });
+      const bans = await db.query('bans', { device_id: `eq.${deviceId}` }) as BanRecord[];
       const now = Date.now();
-      return !bans.some((ban: any) => !ban.expires_at || ban.expires_at > now);
+      return !bans.some((ban: BanRecord) => !ban.expires_at || ban.expires_at > now);
     }
 
     return true;
@@ -232,11 +237,11 @@ class RealTimeNotifications {
   }
 
   // Log notification events
-  private async logNotificationEvent(type: string, data: unknown): Promise<void> {
+  private async logNotificationEvent(type: string, data: Record<string, unknown>): Promise<void> {
     try {
       await db.insert('notification_logs', {
-        notification_id: data.announcement_id || type,
-        device_id: data.device_id || null,
+        notification_id: (data.announcement_id as string) || type,
+        device_id: (data.device_id as string) || null,
         type: type,
         content: JSON.stringify(data),
         sent_at: Date.now(),

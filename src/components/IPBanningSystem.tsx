@@ -425,7 +425,7 @@ const IPBanningSystem = () => {
               <select
                 id="ban-type"
                 value={newBan.ban_type}
-                onChange={(e) => setNewBan(prev => ({...prev, ban_type: e.target.value as any}))}
+                onChange={(e) => setNewBan(prev => ({...prev, ban_type: e.target.value as 'temporary' | 'permanent'}))}
                 className="w-full p-2 rounded bg-red-950/50 border border-red-500/30 text-white"
               >
                 <option value="temporary">Temporary</option>
@@ -438,7 +438,7 @@ const IPBanningSystem = () => {
               <select
                 id="severity"
                 value={newBan.severity}
-                onChange={(e) => setNewBan(prev => ({...prev, severity: e.target.value as any}))}
+                onChange={(e) => setNewBan(prev => ({...prev, severity: e.target.value as 'low' | 'medium' | 'high' | 'critical'}))}
                 className="w-full p-2 rounded bg-red-950/50 border border-red-500/30 text-white"
               >
                 <option value="low">Low</option>

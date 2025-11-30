@@ -178,7 +178,7 @@ const MessageContentFilter = () => {
               <select
                 id="filter-type"
                 value={newFilter.filter_type}
-                onChange={(e) => setNewFilter(prev => ({...prev, filter_type: e.target.value as any}))}
+                onChange={(e) => setNewFilter(prev => ({...prev, filter_type: e.target.value as 'blocked_word' | 'suspicious_pattern' | 'spam_detection'}))}
                 className="w-full p-2 rounded bg-gray-800 border border-gray-700 text-white"
               >
                 <option value="blocked_word">Blocked Word</option>
@@ -191,7 +191,7 @@ const MessageContentFilter = () => {
               <select
                 id="filter-action"
                 value={newFilter.action}
-                onChange={(e) => setNewFilter(prev => ({...prev, action: e.target.value as any}))}
+                onChange={(e) => setNewFilter(prev => ({...prev, action: e.target.value as 'block' | 'flag' | 'auto_ban'}))}
                 className="w-full p-2 rounded bg-gray-800 border border-gray-700 text-white"
               >
                 <option value="block">Block Message</option>

@@ -122,7 +122,11 @@ class EnhancedNotifications {
     if (typeof Audio !== 'undefined' && this.settings.soundEnabled) {
       try {
         // Create audio context for Chromebook optimized sounds
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        interface WindowWithWebkit extends Window {
+          webkitAudioContext?: typeof AudioContext;
+        }
+        const windowWithWebkit = window as WindowWithWebkit;
+        const audioContext = new (window.AudioContext || windowWithWebkit.webkitAudioContext!)();
         this.setupNotificationSounds(audioContext);
       } catch (error) {
         console.log('Audio system not available');
@@ -132,7 +136,7 @@ class EnhancedNotifications {
 
   private setupNotificationSounds(audioContext: AudioContext): void {
     // Chromebook-friendly notification sounds
-    (window as any).createNotificationSound = (type: string) => {
+    (window as unknown as Record<string, unknown>).createNotificationSound = (type: string) => {
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
 
@@ -161,7 +165,7 @@ class EnhancedNotifications {
   private initializeVibration(): void {
     if ('vibrate' in navigator && this.settings.vibrationEnabled) {
       // Chromebook vibration patterns
-      (window as any).vibrateNotification = (type: string) => {
+      (window as unknown as Record<string, unknown>).vibrateNotification = (type: string) => {
         const patterns = {
           message: [50],
           announcement: [100, 50, 100],
@@ -387,14 +391,16 @@ class EnhancedNotifications {
   }
 
   private playNotificationSound(type: string): void {
-    if (typeof window !== 'undefined' && (window as any).createNotificationSound) {
-      (window as any).createNotificationSound(type);
+    const win = window as unknown as Record<string, unknown>;
+    if (typeof window !== 'undefined' && win.createNotificationSound) {
+      (win.createNotificationSound as (type: string) => void)(type);
     }
   }
 
   private vibrateNotification(type: string): void {
-    if (typeof window !== 'undefined' && (window as any).vibrateNotification) {
-      (window as any).vibrateNotification(type);
+    const win = window as unknown as Record<string, unknown>;
+    if (typeof window !== 'undefined' && win.vibrateNotification) {
+      (win.vibrateNotification as (type: string) => void)(type);
     }
   }
 
@@ -579,5 +585,7 @@ class EnhancedNotifications {
 
 // Global instance
 export const enhancedNotifications = EnhancedNotifications.getInstance();
-(window as any).enhancedNotifications = enhancedNotifications;
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).enhancedNotifications = enhancedNotifications;
+}
 export default enhancedNotifications;

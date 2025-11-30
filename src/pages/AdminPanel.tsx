@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, LogOut, MessageSquare, Ban, Plus, Lightbulb, Scale, Bell, FileText, AlertTriangle } from "lucide-react";
+import { Shield, LogOut, MessageSquare, Ban, Plus, Lightbulb, Scale, Bell, FileText, AlertTriangle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import AdminAppealsList from "@/components/AdminAppealsList";
 import AdminNotificationSystem from "@/components/AdminNotificationSystem";
 import AdminThreatMonitor from "@/components/AdminThreatMonitor";
 import AdminFileModeration from "@/components/AdminFileModeration";
+import AdminMessaging from "@/components/AdminMessaging";
 
 interface Room {
   _row_id: number;
@@ -345,7 +346,11 @@ const AdminPanel = () => {
               <MessageSquare className="w-4 h-4 mr-2" />
               Rooms
             </TabsTrigger>
-            <TabsTrigger value="bans" className="data-[state=active]:bg-purple-600">
+            <TabsTrigger value="messaging" className="data-[state=active]:bg-pink-600">
+              <Send className="w-4 h-4 mr-2" />
+              Send Messages
+            </TabsTrigger>
+            <TabsTrigger value="bans" className="data-[state=active]:bg-red-600">
               <Ban className="w-4 h-4 mr-2" />
               Bans
             </TabsTrigger>
@@ -353,23 +358,28 @@ const AdminPanel = () => {
               <FileText className="w-4 h-4 mr-2" />
               Files
             </TabsTrigger>
-            <TabsTrigger value="threats" className="data-[state=active]:bg-red-600">
+            <TabsTrigger value="threats" className="data-[state=active]:bg-orange-600">
               <AlertTriangle className="w-4 h-4 mr-2" />
-              Threat Monitor
+              Threats
             </TabsTrigger>
             <TabsTrigger value="suggestions" className="data-[state=active]:bg-yellow-600">
               <Lightbulb className="w-4 h-4 mr-2" />
               Suggestions
             </TabsTrigger>
-            <TabsTrigger value="appeals" className="data-[state=active]:bg-blue-600">
+            <TabsTrigger value="appeals" className="data-[state=active]:bg-cyan-600">
               <Scale className="w-4 h-4 mr-2" />
               Appeals
             </TabsTrigger>
-            <TabsTrigger value="notifications" className="data-[state=active]:bg-yellow-600">
+            <TabsTrigger value="notifications" className="data-[state=active]:bg-green-600">
               <Bell className="w-4 h-4 mr-2" />
               Notifications
             </TabsTrigger>
           </TabsList>
+
+          {/* Admin Messaging Tab */}
+          <TabsContent value="messaging">
+            <AdminMessaging />
+          </TabsContent>
 
           {/* Rooms Tab */}
           <TabsContent value="rooms" className="space-y-6">
