@@ -9,10 +9,10 @@ import MessageBubble from "@/components/MessageBubble";
 import RoomHeader from "@/components/RoomHeader";
 import FileUpload from "@/components/FileUpload";
 import SharedFile from "@/components/SharedFile";
-import { getDeviceId, containsProfanity, getBanReason } from "@/lib/deviceId";
+import { getDeviceId } from "@/lib/deviceId";
 import PushNotificationManager from "@/lib/pushNotifications";
 import RealTimePushNotifications from "@/lib/realTimePushNotifications";
-import AdvancedBanDetection from "@/lib/advancedBanDetection";
+import superBanSystem from "@/lib/superAdvancedBanSystem";
 import UserManager from "@/lib/userManagement";
 
 interface Message {
@@ -187,47 +187,82 @@ const ChatRoom = () => {
     }
   }, [toast, isBanned]);
 
-  // Auto-ban user with advanced detection
-  const autoBanUser = useCallback(async (user: string, device: string, message: string) => {
+  // Super Advanced Auto-ban system - 5x better detection
+  const processAutoBan = useCallback(async (user: string, device: string, message: string, roomIdNum?: number) => {
     try {
       // Check if already banned
       const existingBans = await db.query("bans", { device_id: `eq.${device}` });
-      if (existingBans.length === 0) {
-        const banAnalysis = await AdvancedBanDetection.analyzeMessage(message, user);
-        
-        if (banAnalysis.shouldBan) {
-          await db.insert("bans", {
-            username: user,
-            device_id: device,
-            room_id: null, // Global ban
-          });
-          
-          // Create notification about the ban
-          await db.insert("notifications", {
-            type: "auto_ban",
-            message: `You have been automatically banned: ${banAnalysis.reason}`,
-            recipient_device_id: device,
-            is_read: 0,
-            created_by_admin: 0,
-          });
-          
-          // Send push notification
-          await PushNotificationManager.sendLocalNotification(
-            "⛔ Auto-Ban Detected",
-            `${banAnalysis.reason} (Threat Score: ${banAnalysis.threatScore})`,
-            { requireInteraction: true, tag: 'auto-ban' }
-          );
-          
-          setIsBanned(true);
-          toast({
-            title: "You have been banned",
-            description: `${banAnalysis.reason} (Threat Score: ${banAnalysis.threatScore})`,
-            variant: "destructive",
-          });
-        }
+      const now = Date.now();
+      const activeBan = existingBans.find((b: { expires_at: number | null }) => !b.expires_at || b.expires_at > now);
+      
+      if (activeBan) {
+        setIsBanned(true);
+        return true;
       }
+
+      // Run super advanced ban analysis
+      const decision = await superBanSystem.analyzeMessage(message, user, device, roomIdNum);
+      
+      console.log("Ban Analysis Result:", {
+        shouldBan: decision.shouldBan,
+        shouldWarn: decision.shouldWarn,
+        threatScore: decision.threatScore,
+        severity: decision.severity,
+        patterns: decision.detectedPatterns,
+        suggestedAction: decision.suggestedAction
+      });
+
+      // Handle warning
+      if (decision.shouldWarn && !decision.shouldBan) {
+        const warningCount = superBanSystem.getWarningCount(device);
+        toast({
+          title: `⚠️ Warning (${warningCount + 1}/3)`,
+          description: `${decision.reason}. ${3 - warningCount - 1} warnings left before ban.`,
+          variant: "destructive",
+        });
+        
+        await PushNotificationManager.sendLocalNotification(
+          `⚠️ Warning ${warningCount + 1}/3`,
+          decision.reason,
+          { requireInteraction: false, tag: 'warning' }
+        );
+        
+        return false; // Don't block message, just warn
+      }
+
+      // Handle ban
+      if (decision.shouldBan) {
+        await superBanSystem.executeBan(user, device, decision, message);
+        
+        // Format ban duration message
+        let durationText = 'permanently';
+        if (decision.banDuration > 0) {
+          const hours = Math.round(decision.banDuration / 3600);
+          const days = Math.floor(hours / 24);
+          durationText = days > 0 ? `for ${days} day${days > 1 ? 's' : ''}` : `for ${hours} hour${hours !== 1 ? 's' : ''}`;
+        }
+        
+        // Send push notification
+        await PushNotificationManager.sendLocalNotification(
+          "⛔ You Have Been Banned",
+          `${decision.reason}\nDuration: ${durationText}\nThreat Score: ${decision.threatScore}`,
+          { requireInteraction: true, tag: 'auto-ban' }
+        );
+        
+        setIsBanned(true);
+        toast({
+          title: `⛔ Banned ${durationText}`,
+          description: `${decision.reason} (Severity: ${decision.severity.toUpperCase()}, Score: ${decision.threatScore})`,
+          variant: "destructive",
+        });
+        
+        return true; // Block message
+      }
+      
+      return false;
     } catch (error) {
-      console.log("Error auto-banning user:", error);
+      console.log("Error in auto-ban processing:", error);
+      return false;
     }
   }, [toast]);
 
@@ -242,12 +277,12 @@ const ChatRoom = () => {
     loadRoom();
     checkBanStatus(username, device, true);
 
-    // Poll for new messages every 2 seconds
+    // Real-time updates - poll every 500ms (0.5 seconds)
     pollInterval.current = setInterval(() => {
       loadMessages();
       // Also check ban status in real-time (without showing toast each time)
       checkBanStatus(username, device, false);
-    }, 2000);
+    }, 500);
 
     return () => {
       if (pollInterval.current) {
@@ -275,14 +310,12 @@ const ChatRoom = () => {
     const messageContent = newMessage.trim();
     setNewMessage("");
 
-    // Advanced content filtering
-    const basicProfanity = containsProfanity(messageContent);
-    const advancedCheck = await AdvancedBanDetection.analyzeMessage(messageContent, username);
+    // Super Advanced Auto-Ban Check (5x better!)
+    const shouldBlock = await processAutoBan(username, deviceId, messageContent, parseInt(roomId!));
     
-    if (basicProfanity || advancedCheck.shouldBan) {
-      await autoBanUser(username, deviceId, messageContent);
+    if (shouldBlock) {
       setIsSending(false);
-      return;
+      return; // Message blocked due to ban
     }
 
     try {

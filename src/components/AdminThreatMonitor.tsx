@@ -39,6 +39,9 @@ const AdminThreatMonitor = ({ onBanUser }: AdminThreatMonitorProps) => {
 
   useEffect(() => {
     loadData();
+    // Real-time updates - refresh every 1 second
+    const interval = setInterval(loadData, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadData = async () => {

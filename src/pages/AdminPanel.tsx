@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, LogOut, MessageSquare, Ban, Plus, Lightbulb, Scale, Bell, FileText, AlertTriangle, Send } from "lucide-react";
+import { Shield, LogOut, MessageSquare, Ban, Plus, Lightbulb, Scale, Bell, FileText, AlertTriangle, Send, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import AdminNotificationSystem from "@/components/AdminNotificationSystem";
 import AdminThreatMonitor from "@/components/AdminThreatMonitor";
 import AdminFileModeration from "@/components/AdminFileModeration";
 import AdminMessaging from "@/components/AdminMessaging";
+import AdminQuickActions from "@/components/AdminQuickActions";
 
 interface Room {
   _row_id: number;
@@ -101,6 +102,10 @@ const AdminPanel = () => {
       return;
     }
     loadData();
+    
+    // Real-time updates - refresh every 1 second
+    const interval = setInterval(loadData, 1000);
+    return () => clearInterval(interval);
   }, [navigate, loadData]);
 
   const loadRoomMessages = async (room: Room) => {
@@ -340,8 +345,12 @@ const AdminPanel = () => {
 
       {/* Main content */}
       <main className="relative z-10 max-w-7xl mx-auto p-4">
-        <Tabs defaultValue="rooms" className="space-y-6">
+        <Tabs defaultValue="quick" className="space-y-6">
           <TabsList className="bg-secondary/50 flex-wrap h-auto gap-1">
+            <TabsTrigger value="quick" className="data-[state=active]:bg-yellow-600">
+              <Zap className="w-4 h-4 mr-2" />
+              Quick Actions
+            </TabsTrigger>
             <TabsTrigger value="rooms" className="data-[state=active]:bg-purple-600">
               <MessageSquare className="w-4 h-4 mr-2" />
               Rooms
@@ -362,7 +371,7 @@ const AdminPanel = () => {
               <AlertTriangle className="w-4 h-4 mr-2" />
               Threats
             </TabsTrigger>
-            <TabsTrigger value="suggestions" className="data-[state=active]:bg-yellow-600">
+            <TabsTrigger value="suggestions" className="data-[state=active]:bg-amber-600">
               <Lightbulb className="w-4 h-4 mr-2" />
               Suggestions
             </TabsTrigger>
@@ -375,6 +384,11 @@ const AdminPanel = () => {
               Notifications
             </TabsTrigger>
           </TabsList>
+
+          {/* Quick Actions Tab */}
+          <TabsContent value="quick">
+            <AdminQuickActions />
+          </TabsContent>
 
           {/* Admin Messaging Tab */}
           <TabsContent value="messaging">
