@@ -401,10 +401,10 @@ const ChatRoom = () => {
     if (!newMessage.trim() || isBanned) return;
 
     setIsSending(true);
-    let messageContent = newMessage.trim();
+    const messageContent = newMessage.trim();
     setNewMessage("");
 
-    // Content safety filter - check for personal info
+    // Content safety filter - check for personal info and profanity
     const filterSettings: Partial<FilterSettings> = {
       block_phone_numbers: adminSettings.block_phone_numbers === 'true',
       block_emails: adminSettings.block_emails === 'true',
@@ -417,51 +417,56 @@ const ChatRoom = () => {
 
     const filterResult = filterContent(messageContent, filterSettings);
     
-    if (filterResult.blocked) {
-      toast({
-        title: "🚫 Message Blocked",
-        description: `Content blocked: ${filterResult.reasons.join(', ')}`,
-        variant: "destructive",
-      });
+    // If ANY blocked content is detected - BLOCK and BAN
+    if (filterResult.blocked || filterResult.hasProfanity) {
+      const banReason = filterResult.reasons.length > 0 
+        ? filterResult.reasons.join(', ')
+        : 'Profanity/inappropriate language detected';
       
-      // Check if instant ban for personal info
-      if (adminSettings.instant_ban_personal_info === 'true' && filterResult.reasons.some(r => r.includes('CRITICAL'))) {
+      // IMMEDIATE BAN
+      try {
         await db.insert("bans", {
           username: username,
           device_id: deviceId,
           room_id: null,
-          ban_reason: `Personal info shared: ${filterResult.reasons.filter(r => r.includes('CRITICAL')).join(', ')}`,
-          message_content: messageContent,
+          ban_reason: banReason,
+          message_content: messageContent, // Store what they tried to say
           ban_duration: 86400, // 24 hours
         });
         
         // Log the activity
-        try {
-          await db.insert("ip_activity_logs", {
-            device_id: deviceId,
-            username: username,
-            action: "banned_pii",
-            room_id: parseInt(roomId!),
-            message_preview: messageContent.substring(0, 50),
-          });
-        } catch (logErr) {
-          console.log("IP log failed:", logErr);
-        }
-        
-        setIsBanned(true);
-        toast({
-          title: "⛔ You have been banned",
-          description: "Sharing personal information is not allowed",
-          variant: "destructive",
+        await db.insert("ip_activity_logs", {
+          device_id: deviceId,
+          username: username,
+          action: "banned_content",
+          room_id: parseInt(roomId!),
+          message_preview: `[BLOCKED] ${messageContent.substring(0, 30)}...`,
         });
+        
+        // Create notification for the user
+        await db.insert("notifications", {
+          type: "ban",
+          message: `You have been BANNED for: ${banReason}. Your message "${messageContent.substring(0, 50)}..." was blocked.`,
+          recipient_device_id: deviceId,
+          is_read: 0,
+          created_by_admin: 0,
+        });
+      } catch (banErr) {
+        console.log("Ban insert error:", banErr);
       }
+      
+      setIsBanned(true);
+      
+      // Show big ban notification
+      toast({
+        title: "⛔ YOU HAVE BEEN BANNED",
+        description: `Your message was blocked and you are now banned.\nReason: ${banReason}`,
+        variant: "destructive",
+      });
       
       setIsSending(false);
       return;
     }
-
-    // Use filtered content (profanity replaced)
-    messageContent = filterResult.filteredContent;
 
     // Super Advanced Auto-Ban Check (5x better!)
     const shouldBlock = await processAutoBan(username, deviceId, messageContent, parseInt(roomId!));

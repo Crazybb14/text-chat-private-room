@@ -5,6 +5,7 @@ export interface FilterResult {
   reasons: string[];
   threatScore: number;
   filteredContent: string;
+  hasProfanity: boolean;
 }
 
 export interface FilterSettings {
@@ -49,10 +50,29 @@ const CREDIT_CARD_PATTERNS = [
 // IP address pattern
 const IP_PATTERN = /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g;
 
-// Profanity list (basic - expand as needed)
+// EXPANDED Profanity list with variations
 const PROFANITY_LIST = [
-  'fuck', 'shit', 'ass', 'bitch', 'damn', 'crap', 'dick', 'cock', 'pussy',
-  'bastard', 'slut', 'whore', 'cunt', 'fag', 'nigger', 'retard', 'kys',
+  // Extreme (instant ban)
+  'fuck', 'fck', 'fuk', 'fuq', 'f u c k', 'f.u.c.k', 'fvck', 'phuck',
+  'shit', 'sh1t', 'sht', 's h i t', 'sh!t', '$hit',
+  'bitch', 'b1tch', 'biatch', 'b!tch',
+  'dick', 'd1ck', 'dik', 'd!ck',
+  'cock', 'c0ck',
+  'pussy', 'puss', 'pu$$y',
+  'ass', 'a$$', '@ss', 'azz',
+  'bastard', 'b4stard',
+  'slut', 'sl0t', 's1ut',
+  'whore', 'wh0re', 'h0e', 'hoe',
+  'cunt', 'c0nt', 'cvnt',
+  'fag', 'f4g', 'faggot', 'f4ggot',
+  'nigger', 'n1gger', 'nigg4', 'n!gga', 'nigga', 'n1gga',
+  'retard', 'r3tard', 'retrd',
+  'kys', 'kill yourself',
+  // Medium
+  'damn', 'crap', 'hell', 'piss', 
+  'stfu', 'gtfo', 'wtf', 'omfg',
+  // Hate speech
+  'nazi', 'hitler', 'kkk',
 ];
 
 // Spam patterns
@@ -66,6 +86,7 @@ export function filterContent(content: string, settings: Partial<FilterSettings>
   const reasons: string[] = [];
   let threatScore = 0;
   let filteredContent = content;
+  let hasProfanity = false;
   
   // Check phone numbers
   if (settings.block_phone_numbers !== false) {
@@ -139,15 +160,23 @@ export function filterContent(content: string, settings: Partial<FilterSettings>
     }
   }
   
-  // Check profanity
+  // Check profanity - STRICT MODE (any profanity = ban)
   if (settings.profanity_filter !== false) {
-    const lowerContent = content.toLowerCase();
+    const lowerContent = content.toLowerCase().replace(/[^a-z0-9\s]/g, ''); // Remove special chars for matching
+    const originalLower = content.toLowerCase();
+    
     for (const word of PROFANITY_LIST) {
-      const regex = new RegExp(`\\b${word}\\b`, 'gi');
-      if (regex.test(lowerContent)) {
-        reasons.push(`Profanity detected: "${word}"`);
-        threatScore += 10;
-        filteredContent = filteredContent.replace(regex, '*'.repeat(word.length));
+      // Check normal match
+      const regex = new RegExp(`\\b${word.replace(/\s+/g, '\\s*')}\\b`, 'gi');
+      // Also check for spaced out letters: f u c k
+      const spacedRegex = new RegExp(word.split('').join('\\s*'), 'gi');
+      
+      if (regex.test(originalLower) || spacedRegex.test(lowerContent)) {
+        reasons.push(`🚫 BANNED WORD: "${word}"`);
+        threatScore += 100; // High score = instant block
+        hasProfanity = true;
+        filteredContent = filteredContent.replace(regex, '***BLOCKED***');
+        filteredContent = filteredContent.replace(spacedRegex, '***BLOCKED***');
       }
     }
   }
@@ -161,10 +190,11 @@ export function filterContent(content: string, settings: Partial<FilterSettings>
   }
   
   return {
-    blocked: threatScore >= 50 || reasons.some(r => r.includes('CRITICAL')),
+    blocked: threatScore >= 50 || reasons.some(r => r.includes('CRITICAL')) || hasProfanity,
     reasons,
     threatScore,
-    filteredContent
+    filteredContent,
+    hasProfanity
   };
 }
 
