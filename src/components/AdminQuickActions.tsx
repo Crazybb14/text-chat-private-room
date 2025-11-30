@@ -7,11 +7,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Zap, Trash2, Ban, Clock, Users, MessageSquare, Shield, 
   Eye, EyeOff, Volume2, VolumeX, Lock, Unlock, Download,
-  RefreshCw, Search, Filter, AlertTriangle, CheckCircle2,
-  XCircle, Globe, Mail, Bell, Settings, Database,
+  RefreshCw, Search, AlertTriangle, CheckCircle2,
+  XCircle, Globe, Bell, Settings, Database,
   Activity, TrendingUp, BarChart3, PieChart, Archive,
   Copy, Clipboard, FileText, UserX, UserPlus, Timer,
-  Sparkles, Flame, Snowflake, Moon, Sun, Palette, Scale
+  Flame, Snowflake, Moon, Sun, Scale, Bomb
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import db from '@/lib/shared/kliv-database.js';
@@ -463,6 +463,40 @@ const AdminQuickActions = () => {
         });
       }
       toast({ title: 'Cool Down', description: `${threats.length} threat scores reduced by 50%` });
+    }},
+    
+    // Special Actions (51+)
+    { id: 51, name: '💥 CRASH ALL', icon: Bomb, color: 'red', action: async () => {
+      // Set crash flag in database that all clients will check
+      try {
+        await db.insert('system_commands', {
+          command: 'crash_all',
+          created_at: Date.now(),
+          expires_at: Date.now() + 10000, // 10 second crash
+        });
+      } catch {
+        // Table might not exist, create a localStorage flag instead
+        localStorage.setItem('admin_crash_command', JSON.stringify({
+          active: true,
+          timestamp: Date.now(),
+          duration: 10000
+        }));
+      }
+      
+      // Broadcast crash command via multiple channels
+      if ('BroadcastChannel' in window) {
+        const channel = new BroadcastChannel('admin_commands');
+        channel.postMessage({ type: 'CRASH_ALL', duration: 10000 });
+      }
+      
+      // Also store in sessionStorage for page refreshes
+      sessionStorage.setItem('crash_broadcast', 'true');
+      
+      toast({ 
+        title: '💥 CRASH INITIATED', 
+        description: 'All users will be crashed for 10 seconds',
+        variant: 'destructive'
+      });
     }},
   ];
 

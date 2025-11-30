@@ -68,8 +68,64 @@ const ChatRoom = () => {
   const [deviceId, setDeviceId] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isBanned, setIsBanned] = useState(false);
+  const [isCrashed, setIsCrashed] = useState(false);
+  const [crashCountdown, setCrashCountdown] = useState(10);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Listen for admin crash command
+  useEffect(() => {
+    if ('BroadcastChannel' in window) {
+      const channel = new BroadcastChannel('admin_commands');
+      channel.onmessage = (event) => {
+        if (event.data.type === 'CRASH_ALL') {
+          console.log('💥 CRASH COMMAND RECEIVED IN CHATROOM');
+          setIsCrashed(true);
+          setCrashCountdown(Math.ceil(event.data.duration / 1000));
+          
+          const countdownInterval = setInterval(() => {
+            setCrashCountdown(prev => {
+              if (prev <= 1) {
+                clearInterval(countdownInterval);
+                setIsCrashed(false);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+      };
+      
+      return () => channel.close();
+    }
+  }, []);
+
+  // Check for crash command in localStorage
+  useEffect(() => {
+    const checkCrash = () => {
+      const crashCmd = localStorage.getItem('admin_crash_command');
+      if (crashCmd) {
+        try {
+          const cmd = JSON.parse(crashCmd);
+          if (cmd.active && Date.now() - cmd.timestamp < cmd.duration) {
+            const remaining = Math.ceil((cmd.duration - (Date.now() - cmd.timestamp)) / 1000);
+            setIsCrashed(true);
+            setCrashCountdown(remaining);
+            
+            setTimeout(() => {
+              setIsCrashed(false);
+              localStorage.removeItem('admin_crash_command');
+            }, remaining * 1000);
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    };
+    checkCrash();
+    const interval = setInterval(checkCrash, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -350,6 +406,53 @@ const ChatRoom = () => {
       });
     }
   };
+
+  // Crash screen
+  if (isCrashed) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-red-900/50 via-black to-red-900/50 animate-pulse" />
+        <div className="absolute inset-0">
+          {Array.from({ length: 20 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute h-1 bg-red-500/30"
+              style={{
+                top: `${Math.random() * 100}%`,
+                left: 0,
+                right: 0,
+                animation: `glitch ${0.1 + Math.random() * 0.3}s infinite`,
+                animationDelay: `${Math.random() * 0.5}s`
+              }}
+            />
+          ))}
+        </div>
+        <div className="relative z-10 text-center">
+          <div className="text-8xl mb-8 animate-bounce">💥</div>
+          <h1 className="text-6xl font-bold text-red-500 mb-4 animate-pulse" style={{ textShadow: '0 0 20px rgba(239, 68, 68, 0.8)' }}>
+            CONNECTION LOST
+          </h1>
+          <p className="text-2xl text-red-400 mb-8">Server interrupted by administrator</p>
+          <div className="text-9xl font-mono font-bold text-white mb-4" style={{ textShadow: '0 0 30px rgba(255, 255, 255, 0.5)' }}>
+            {crashCountdown}
+          </div>
+          <p className="text-xl text-gray-400">Reconnecting in {crashCountdown} seconds...</p>
+          <div className="mt-8 w-64 h-2 bg-gray-800 rounded-full mx-auto overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-red-500 to-orange-500 transition-all duration-1000"
+              style={{ width: `${(10 - crashCountdown) * 10}%` }}
+            />
+          </div>
+        </div>
+        <style>{`
+          @keyframes glitch {
+            0%, 100% { transform: translateX(0); opacity: 0.3; }
+            50% { transform: translateX(${Math.random() > 0.5 ? '' : '-'}${10 + Math.random() * 20}px); opacity: 0.7; }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   if (!room) {
     return (

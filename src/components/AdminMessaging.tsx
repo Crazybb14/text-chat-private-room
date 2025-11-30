@@ -209,7 +209,7 @@ const AdminMessaging = () => {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-4 gap-4 h-[600px]">
+      <div className="grid lg:grid-cols-5 gap-4 h-[800px]">
         {/* Room Selection Sidebar */}
         <Card className="glass-morphism border-white/10 overflow-hidden">
           <CardHeader className="py-3 bg-gradient-to-r from-purple-600/20 to-pink-600/20">
@@ -219,7 +219,7 @@ const AdminMessaging = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <ScrollArea className="h-[520px]">
+            <ScrollArea className="h-[720px]">
               <div className="p-2 space-y-1">
                 {rooms.map((room) => (
                   <button
@@ -265,7 +265,7 @@ const AdminMessaging = () => {
         </Card>
 
         {/* Chat Area */}
-        <Card className="lg:col-span-3 glass-morphism border-white/10 flex flex-col overflow-hidden">
+        <Card className="lg:col-span-4 glass-morphism border-white/10 flex flex-col overflow-hidden">
           {selectedRoom ? (
             <>
               {/* Room Header */}
