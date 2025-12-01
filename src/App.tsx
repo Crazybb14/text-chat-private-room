@@ -11,7 +11,6 @@ import AdminPanel from "./pages/AdminPanel";
 import Suggestions from "./pages/Suggestions";
 import Appeal from "./pages/Appeal";
 import NotFound from "./pages/NotFound";
-import TermsOfService from "./pages/TermsOfService";
 import RouteGuard from "./components/RouteGuard";
 import LockdownScreenFixed from "./components/LockdownScreenFixed";
 
@@ -78,8 +77,8 @@ const App = () => {
             <Route 
               path="/chat/:roomId" 
               element={
-                <RouteGuard requireTOS={true}>
-                <ChatRoomWithFriends />
+                <RouteGuard requireAuth={true}>
+                  <ChatRoomWithFriends />
                 </RouteGuard>
               } 
             />
@@ -87,7 +86,6 @@ const App = () => {
             <Route path="/admin/panel" element={<AdminPanel />} />
             <Route path="/suggestions" element={<Suggestions />} />
             <Route path="/appeal" element={<Appeal />} />
-            <Route path="/terms" element={<TermsOfService />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

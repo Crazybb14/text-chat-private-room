@@ -176,39 +176,23 @@ const Index = () => {
     initializeApp();
   }, [toast]);
 
-  // Check for existing username and TOS agreement
+  // Check for existing username
   useEffect(() => {
-    const checkUsernameAndTOS = async () => {
+    const checkUsername = async () => {
       try {
         const existingUsername = await UserManager.getUsername();
         if (existingUsername) {
           console.log("Found existing username:", existingUsername);
           setUsername(existingUsername);
           setUsernameSet(true);
-          
-          // Check if user has agreed to TOS
-          const deviceId = getDeviceId();
-          const tosAgreement = await db.query("tos_agreements", {
-            device_id: `eq.${deviceId}`,
-            tos_version: "eq.1.0"
-          });
-          
-          if (tosAgreement.length === 0) {
-            // User has username but hasn't agreed to TOS, redirect to TOS
-            console.log("User has username but no TOS agreement, redirecting to TOS");
-            navigate("/terms");
-            return;
-          } else {
-            console.log("User has TOS agreement, allowing access");
-          }
         }
       } catch (error) {
-        console.log("Error checking username and TOS:", error);
+        console.log("Error checking username:", error);
       }
     };
     
-    checkUsernameAndTOS();
-  }, [navigate]);
+    checkUsername();
+  }, []);
 
   // Crash screen
   if (isCrashed) {
@@ -278,26 +262,6 @@ const Index = () => {
           console.log("Username setup completed:", username);
           setUsername(username);
           setUsernameSet(true);
-          
-          // Check if user needs to agree to TOS after setting username
-          const deviceId = getDeviceId();
-          try {
-            const tosAgreement = await db.query("tos_agreements", {
-              device_id: `eq.${deviceId}`,
-              tos_version: "eq.1.0"
-            });
-            
-            if (tosAgreement.length === 0) {
-              // New user needs to agree to TOS
-              console.log("New user needs to agree to TOS, redirecting");
-              navigate("/terms");
-              return;
-            } else {
-              console.log("User already agreed to TOS, allowing access");
-            }
-          } catch (error) {
-            console.error("Error checking TOS agreement:", error);
-          }
         }}
       />
     );

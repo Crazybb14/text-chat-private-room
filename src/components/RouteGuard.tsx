@@ -1,71 +1,43 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
-import db from "@/lib/shared/kliv-database.js";
 import UserManager from "@/lib/userManagement";
-import { getDeviceId } from "@/lib/deviceId";
 
 interface RouteGuardProps {
   children: React.ReactNode;
-  requireTOS?: boolean;
   requireAuth?: boolean;
 }
 
-const RouteGuard = ({ children, requireTOS = false, requireAuth = false }: RouteGuardProps) => {
+const RouteGuard: React.FC<RouteGuardProps> = ({ 
+  children, 
+  requireAuth = false 
+}) => {
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const [checking, setChecking] = useState(true);
-  
+  const [isChecking, setIsChecking] = useState(true);
+
   useEffect(() => {
-    const checkRequirements = async () => {
+    const checkAuth = async () => {
       try {
-        // Check if user has accepted TOS if required
-        if (requireTOS) {
-          const username = await UserManager.getUsername();
-          const deviceId = getDeviceId();
-          
-          if (!username) {
-            navigate("/");
-            return;
-          }
+        const username = await UserManager.getUsername();
 
-          const existing = await db.query("tos_agreements", {
-            device_id: `eq.${deviceId}`,
-            tos_version: "eq.1.0"
-          });
-
-          if (existing.length === 0) {
-            navigate("/terms");
-            return;
-          }
+        if (requireAuth && !username) {
+          // Redirect unauthenticated users to index
+          navigate("/", { replace: true });
+          setIsChecking(false);
+          return;
         }
 
-        // Check if user is authenticated if required
-        if (requireAuth) {
-          const username = await UserManager.getUsername();
-          if (!username) {
-            navigate("/");
-            return;
-          }
-        }
-
-        setChecking(false);
+        setIsChecking(false);
       } catch (error) {
-        console.error("Error checking requirements:", error);
-        setChecking(false);
-        
-        toast({
-          title: "⚠️ Error",
-          description: "Failed to verify requirements. Please try again.",
-          variant: "destructive",
-        });
+        console.error("RouteGuard error:", error);
+        navigate("/", { replace: true });
+        setIsChecking(false);
       }
     };
 
-    checkRequirements();
-  }, [navigate, requireTOS, requireAuth]);
+    checkAuth();
+  }, [navigate, requireAuth]);
 
-  if (checking) {
+  if (isChecking) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
