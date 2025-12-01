@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { FileText, Check, ArrowLeft, ArrowRight, Home } from "lucide-react";
+import { FileText, ArrowLeft, ArrowRight, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -319,90 +319,10 @@ Our platform and its features are protected by:
 - We encourage direct resolution between parties when possible
 - Legal action is reserved for significant or repeated violations
 - Educational resources provided for IP understanding`
-
-    },
-    {
-      title: "Termination and Service Availability",
-      content: `Understanding the terms of service termination and availability is important:
-
-**SERVICE AVAILABILITY:**
-1. **Uptime Commitment**: We strive for 99.9% service availability
-2. **Scheduled Maintenance**: Planned downtime is announced in advance
-3. **Emergency Maintenance**: Unscheduled maintenance may be required for security
-4. **Force Majeure**: Service interruptions beyond our control may occur
-
-**ACCOUNT TERMINATION:**
-**BY USER:**
-- You may terminate your account at any time
-- Account deletion removes personal data subject to retention requirements
-- Shared content may remain for compliance purposes
-- Alternative contact methods may be retained for security
-
-**BY PLATFORM:**
-1. **Immediate Termination**: For severe policy violations or illegal activities
-2. **Gradual Termination**: Warning followed by restrictions for moderate violations
-3. **Inactivity**: Accounts inactive for extended periods may be suspended
-4. **Security Reasons**: Termination if account is compromised or poses security risks
-
-**DATA RETENTION POST-TERMINATION:**
-- Account data retained for 30 days for potential recovery
-- Content violating policies may be retained longer for evidence
-- Legal requirements may mandate longer retention periods
-- Financial records maintained according to applicable laws
-
-**SERVICE MODIFICATIONS:**
-1. **Feature Changes**: We may add, remove, or modify features at any time
-2. **Policy Updates**: Terms may change with appropriate notice
-3. **Price Changes**: Free services may become paid with advance notice
-4. **Technology Updates**: System upgrades may affect compatibility
-
-**REFUND POLICY:**
-- Paid services may be eligible for refunds within specified periods
-- Refunds provided for service interruptions beyond our control
-- Account termination may affect refund eligibility
-- Payment processing fees may be deducted from refunds
-
-**EMERGENCY CIRCUMSTANCES:**
-1. **Security Threats**: Service may be suspended during security incidents
-2. **Legal Requirements**: Compliance with legal orders may require service changes
-3. **Natural Disasters**: Events beyond our control may affect availability
-4. **System Failures**: Technical issues may temporarily impact service
-
-**USER OBLIGATIONS POST-TERMINATION:**
-- Continue compliance with confidentiality obligations
-- Respect intellectual property rights
-- Maintain appropriate behavior in related communities
-- Follow legal obligations regarding shared information
-
-We strive to provide reliable service while maintaining flexibility to adapt to changing circumstances.`
     },
     {
       title: "Final Provisions and Contact Information",
       content: `This final section contains important legal provisions and contact information:
-
-**GOVERNING LAW AND JURISDICTION:**
-These Terms are governed by the laws of [Jurisdiction], without regard to conflict of law principles. Any legal action or proceeding will be exclusively in the state or federal courts located in [County, State].
-
-**DISPUTE RESOLUTION:**
-1. **Good Faith Negotiation**: Parties attempt to resolve disputes through direct negotiation
-2. **Mediation**: Optional mediation before legal proceedings
-3. **Arbitration**: Binding arbitration for most disputes (subject to applicable laws)
-4. **Class Actions**: You waive right to participate in class action lawsuits
-
-**SEVERABILITY:**
-If any provision of these Terms is found to be unenforceable, the remaining provisions will continue in full force and effect. The unenforceable provision will be modified to the minimum extent necessary to make it enforceable.
-
-**NOTICES:**
-All legal notices must be sent in writing to:
-- Email: legal@platform.com
-- Physical Address: [Platform Legal Department]
-- Response times: We acknowledge notices within 5 business days
-
-**ASSIGNMENT:**
-You may not assign these Terms without our written consent. We may assign these Terms to affiliates, successors, or related entities.
-
-**ENTIRE AGREEMENT:**
-These Terms constitute the entire agreement between you and us regarding the service. Previous agreements, communications, and understandings are superseded by these Terms.
 
 **ACKNOWLEDGEMENT AND AGREEMENT:**
 By clicking "I Agree" below, you acknowledge that you:
@@ -417,20 +337,18 @@ By clicking "I Agree" below, you acknowledge that you:
 - **Legal**: legal@platform.com
 - **Security**: security@platform.com
 - **Abuse Reports**: abuse@platform.com
-- **Press**: press@platform.com
 
 **POLICY UPDATES:**
 We will notify users of significant policy changes through:
 - In-platform notifications
 - Email announcements
 - Website banners
-- Social media updates
 
 **TRANSLATIONS:**
 If these Terms are translated into other languages, the English version will control in case of conflicts or discrepancies.
 
 **EFFECTIVE DATE:**
-These Terms are effective as of [Current Date] and remain in effect until terminated as described herein.
+These Terms are effective immediately and remain in effect until terminated as described.
 
 Thank you for taking the time to read our comprehensive Terms of Service. We are committed to providing a safe, respectful, and valuable chat experience for all our users.`
     }
@@ -451,13 +369,27 @@ Thank you for taking the time to read our comprehensive Terms of Service. We are
       });
 
       if (existing.length > 0) {
+        console.log("TOS agreement already exists, redirecting to main page");
         navigate("/");
       }
     } catch (error) {
       console.error("Error checking TOS agreement:", error);
     }
   };
-const handleAgree = async () => {
+
+  const nextPage = () => {
+    if (currentPage < termsPages.length - 1) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const prevPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleAgree = async () => {
     if (!agreed) {
       toast({
         title: "❌ Agreement Required",
@@ -477,6 +409,8 @@ const handleAgree = async () => {
       const ipData = await response.json();
       const ipAddress = ipData.ip;
 
+      console.log("Recording TOS agreement for:", { username, deviceId, ipAddress });
+
       // Check if already agreed (prevent duplicates)
       const existing = await db.query("tos_agreements", {
         device_id: `eq.${deviceId}`,
@@ -484,12 +418,15 @@ const handleAgree = async () => {
       });
 
       if (existing.length === 0) {
+        console.log("No existing agreement found, inserting new one");
         await db.insert("tos_agreements", {
           device_id: deviceId,
           username: username,
           tos_version: "1.0",
           ip_address: ipAddress
         });
+      } else {
+        console.log("Agreement already exists");
       }
 
       toast({
@@ -497,10 +434,9 @@ const handleAgree = async () => {
         description: "Thank you for agreeing to our Terms of Service",
       });
 
-      // Add a small delay to ensure the database update is processed
-      setTimeout(() => {
-        navigate("/");
-      }, 1000);
+      // Force redirect to main page
+      console.log("Redirecting to main page after TOS agreement");
+      window.location.href = "/";
     } catch (error) {
       console.error("Error recording agreement:", error);
       toast({
@@ -510,17 +446,6 @@ const handleAgree = async () => {
       });
     } finally {
       setIsSubmitting(false);
-    }
-  };
-  const nextPage = () => {
-    if (currentPage < termsPages.length - 1) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
-
-  const prevPage = () => {
-    if (currentPage > 0) {
-      setCurrentPage(currentPage - 1);
     }
   };
 
