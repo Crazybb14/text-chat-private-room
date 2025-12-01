@@ -178,7 +178,7 @@ const Index = () => {
 
   // Check for existing username and TOS agreement
   useEffect(() => {
-    const checkUsername = async () => {
+    const checkUsernameAndTOS = async () => {
       try {
         const existingUsername = await UserManager.getUsername();
         if (existingUsername) {
@@ -195,16 +195,19 @@ const Index = () => {
           
           if (tosAgreement.length === 0) {
             // User has username but hasn't agreed to TOS, redirect to TOS
+            console.log("User has username but no TOS agreement, redirecting to TOS");
             navigate("/terms");
             return;
+          } else {
+            console.log("User has TOS agreement, allowing access");
           }
         }
       } catch (error) {
-        console.log("Error checking username:", error);
+        console.log("Error checking username and TOS:", error);
       }
     };
     
-    checkUsername();
+    checkUsernameAndTOS();
   }, [navigate]);
 
   // Crash screen
@@ -286,8 +289,11 @@ const Index = () => {
             
             if (tosAgreement.length === 0) {
               // New user needs to agree to TOS
+              console.log("New user needs to agree to TOS, redirecting");
               navigate("/terms");
               return;
+            } else {
+              console.log("User already agreed to TOS, allowing access");
             }
           } catch (error) {
             console.error("Error checking TOS agreement:", error);
@@ -574,7 +580,7 @@ const Index = () => {
                           </div>
                           <DialogTitle className="text-xl">Create Private Room</DialogTitle>
                           <DialogDescription className="text-gray-400">
-                            Give your room a unique name. We\'ll generate a secret 6-digit code for sharing.
+                            Give your room a unique name. We'll generate a secret 6-digit code for sharing.
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 pt-4">

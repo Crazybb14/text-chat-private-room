@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import UserManager from "@/lib/userManagement";
-import EnhancedIPLogger from "@/lib/enhancedIPLogger";
+import { getDeviceId } from "@/lib/deviceId";
 
 interface RouteGuardProps {
   children: React.ReactNode;
@@ -15,15 +15,14 @@ const RouteGuard = ({ children, requireTOS = false, requireAuth = false }: Route
   const navigate = useNavigate();
   const { toast } = useToast();
   const [checking, setChecking] = useState(true);
-  const ipLogger = EnhancedIPLogger.getInstance();
-
+  
   useEffect(() => {
     const checkRequirements = async () => {
       try {
         // Check if user has accepted TOS if required
         if (requireTOS) {
           const username = await UserManager.getUsername();
-          const deviceId = ipLogger.getDeviceId();
+          const deviceId = getDeviceId();
           
           if (!username) {
             navigate("/");
@@ -32,7 +31,6 @@ const RouteGuard = ({ children, requireTOS = false, requireAuth = false }: Route
 
           const existing = await db.query("tos_agreements", {
             device_id: `eq.${deviceId}`,
-            username: `eq.${username}`,
             tos_version: "eq.1.0"
           });
 

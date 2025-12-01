@@ -457,8 +457,7 @@ Thank you for taking the time to read our comprehensive Terms of Service. We are
       console.error("Error checking TOS agreement:", error);
     }
   };
-
-  const handleAgree = async () => {
+const handleAgree = async () => {
     if (!agreed) {
       toast({
         title: "❌ Agreement Required",
@@ -478,19 +477,30 @@ Thank you for taking the time to read our comprehensive Terms of Service. We are
       const ipData = await response.json();
       const ipAddress = ipData.ip;
 
-      await db.insert("tos_agreements", {
-        device_id: deviceId,
-        username: username,
-        tos_version: "1.0",
-        ip_address: ipAddress
+      // Check if already agreed (prevent duplicates)
+      const existing = await db.query("tos_agreements", {
+        device_id: `eq.${deviceId}`,
+        tos_version: "eq.1.0"
       });
+
+      if (existing.length === 0) {
+        await db.insert("tos_agreements", {
+          device_id: deviceId,
+          username: username,
+          tos_version: "1.0",
+          ip_address: ipAddress
+        });
+      }
 
       toast({
         title: "✅ Agreement Recorded",
         description: "Thank you for agreeing to our Terms of Service",
       });
 
-      navigate("/");
+      // Add a small delay to ensure the database update is processed
+      setTimeout(() => {
+        navigate("/");
+      }, 1000);
     } catch (error) {
       console.error("Error recording agreement:", error);
       toast({
@@ -502,7 +512,6 @@ Thank you for taking the time to read our comprehensive Terms of Service. We are
       setIsSubmitting(false);
     }
   };
-
   const nextPage = () => {
     if (currentPage < termsPages.length - 1) {
       setCurrentPage(currentPage + 1);
