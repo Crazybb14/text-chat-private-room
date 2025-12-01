@@ -176,7 +176,7 @@ const Index = () => {
     initializeApp();
   }, [toast]);
 
-  // Check for existing username
+  // Check for existing username and TOS agreement
   useEffect(() => {
     const checkUsername = async () => {
       try {
@@ -185,6 +185,19 @@ const Index = () => {
           console.log("Found existing username:", existingUsername);
           setUsername(existingUsername);
           setUsernameSet(true);
+          
+          // Check if user has agreed to TOS
+          const deviceId = getDeviceId();
+          const tosAgreement = await db.query("tos_agreements", {
+            device_id: `eq.${deviceId}`,
+            tos_version: "eq.1.0"
+          });
+          
+          if (tosAgreement.length === 0) {
+            // User has username but hasn't agreed to TOS, redirect to TOS
+            navigate("/terms");
+            return;
+          }
         }
       } catch (error) {
         console.log("Error checking username:", error);
@@ -192,7 +205,7 @@ const Index = () => {
     };
     
     checkUsername();
-  }, []);
+  }, [navigate]);
 
   // Crash screen
   if (isCrashed) {
@@ -258,10 +271,27 @@ const Index = () => {
   if (!usernameSet) {
     return (
       <UsernameSetup 
-        onUsernameSet={(username) => {
+        onUsernameSet={async (username) => {
           console.log("Username setup completed:", username);
           setUsername(username);
           setUsernameSet(true);
+          
+          // Check if user needs to agree to TOS after setting username
+          const deviceId = getDeviceId();
+          try {
+            const tosAgreement = await db.query("tos_agreements", {
+              device_id: `eq.${deviceId}`,
+              tos_version: "eq.1.0"
+            });
+            
+            if (tosAgreement.length === 0) {
+              // New user needs to agree to TOS
+              navigate("/terms");
+              return;
+            }
+          } catch (error) {
+            console.error("Error checking TOS agreement:", error);
+          }
         }}
       />
     );

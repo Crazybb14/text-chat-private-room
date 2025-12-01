@@ -447,7 +447,6 @@ Thank you for taking the time to read our comprehensive Terms of Service. We are
       
       const existing = await db.query("tos_agreements", {
         device_id: `eq.${deviceId}`,
-        username: `eq.${username}`,
         tos_version: "eq.1.0"
       });
 

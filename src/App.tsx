@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useState, useEffect } from 'react';
 import Index from "./pages/Index";
-import ChatRoom from "./pages/ChatRoom";
+import ChatRoomWithFriends from "./pages/ChatRoomWithFriends";
 import AdminLogin from "./pages/AdminLogin";
 import AdminPanel from "./pages/AdminPanel";
 import Suggestions from "./pages/Suggestions";
@@ -79,7 +79,7 @@ const App = () => {
               path="/chat/:roomId" 
               element={
                 <RouteGuard requireTOS={true}>
-                  <ChatRoom />
+                <ChatRoomWithFriends />
                 </RouteGuard>
               } 
             />
