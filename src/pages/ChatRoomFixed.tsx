@@ -612,7 +612,19 @@ const ChatRoom = () => {
             {crashCountdown}
           </div>
           <p className="text-xl text-gray-400">Reconnecting in {crashCountdown} seconds...</p>
+          <div className="mt-8 w-64 h-2 bg-gray-800 rounded-full mx-auto overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-red-500 to-orange-500 transition-all duration-1000"
+              style={{ width: `${(1 - crashCountdown) * 100}%` }}
+            />
+          </div>
         </div>
+        <style>{`
+          @keyframes glitch {
+            0%, 100% { transform: translateX(0); opacity: 0.3; }
+            50% { transform: translateX(${Math.random() > 0.5 ? '' : '-'}${10 + Math.random() * 20}px); opacity: 0.7; }
+          }
+        `}</style>
       </div>
     );
   }
