@@ -23,6 +23,8 @@ import AdminSettings from "@/components/AdminSettings";
 import AdminFileApproval from "@/components/AdminFileApproval";
 import AdminIPLogger from "@/components/AdminIPLogger";
 import { BiometricAuth } from "@/components/BiometricAuth";
+import ScheduledDowntime from "@/components/ScheduledDowntime";
+import BanManager from "@/components/BanManager";
 
 interface Room {
   _row_id: number;
@@ -545,6 +547,10 @@ const AdminPanel = () => {
               <Settings className="w-4 h-4 mr-2" />
               Settings
             </TabsTrigger>
+            <TabsTrigger value="downtime" className="data-[state=active]:bg-orange-600">
+              <AlertTriangle className="w-4 h-4 mr-2" />
+              Downtime
+            </TabsTrigger>
           </TabsList>
 
           {/* Quick Actions Tab */}
@@ -703,6 +709,11 @@ const AdminPanel = () => {
           {/* Settings Tab */}
           <TabsContent value="settings">
             <AdminSettings />
+          </TabsContent>
+          
+          {/* Downtime Tab */}
+          <TabsContent value="downtime">
+            <ScheduledDowntime />
           </TabsContent>
         </Tabs>
       </main>

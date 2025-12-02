@@ -15,6 +15,8 @@ import RealTimeNotifications from "@/lib/realTimeNotifications";
 import UserManager from "@/lib/userManagement";
 import { getDeviceId } from "@/lib/deviceId";
 import UsernameSetup from "@/components/UsernameSetup";
+import AdminAccessDialog from "@/components/AdminAccessDialog";
+import PrivateRoomAutoCleanup from "@/components/PrivateRoomAutoCleanup";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -28,6 +30,7 @@ const Index = () => {
   const [usernameSet, setUsernameSet] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
+  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
 
   const generateCode = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -417,9 +420,13 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
-      {/* Background gradient effects */}
-      <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-background to-blue-900/20" />
+    <>
+      {/* Auto-cleanup component for private rooms */}
+      <PrivateRoomAutoCleanup />
+      
+      <div className="min-h-screen bg-background relative overflow-hidden">
+        {/* Background gradient effects */}
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-background to-blue-900/20" />
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
 
@@ -436,12 +443,17 @@ const Index = () => {
           </div>
           <Button
             variant="ghost"
-            onClick={() => navigate("/admin")}
+            onClick={() => setAdminDialogOpen(true)}
             className="text-muted-foreground hover:text-foreground"
           >
             <Shield className="w-4 h-4 mr-2" />
             Admin
           </Button>
+          
+          <AdminAccessDialog 
+            open={adminDialogOpen}
+            onClose={() => setAdminDialogOpen(false)}
+          />
         </header>
 
         {/* Main content */}
@@ -651,6 +663,7 @@ const Index = () => {
         </footer>
       </div>
     </div>
+    </>
   );
 };
 

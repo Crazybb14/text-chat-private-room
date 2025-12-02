@@ -12,7 +12,10 @@ import {
   Settings, Shield, Clock, MessageSquare, Image, Link, 
   Users, AlertTriangle, Bell, FileText, Lock, Zap,
   RefreshCw, Save, RotateCcw, CheckCircle2, Phone, Mail,
-  MapPin, CreditCard, Globe, Eye, Video
+  MapPin, CreditCard, Globe, Eye, Video, Activity, TrendingUp,
+  Database, Server, Wifi, Battery, HardDrive, Monitor, Speaker,
+  Volume2, Mic, Camera, Smartphone, Tablet, Laptop, Code,
+  Filter, Search, Hash, AtSign, DollarSign, Percent
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import db from '@/lib/shared/kliv-database.js';
@@ -132,6 +135,137 @@ const AdminSettings = () => {
       lockdown_mode: 'false',
       announcements_enabled: 'true',
       vip_bypass_limits: 'false',
+      
+      // Room Management (50+ new settings below)
+      auto_delete_empty_rooms: 'true',
+      auto_delete_timeout_minutes: '60',
+      max_private_rooms_per_user: '3',
+      room_inactivity_cleanup_hours: '1',
+      allow_room_creation: 'true',
+      require_admin_room_approval: 'false',
+      max_users_per_room: '50',
+      default_room_message_history: '100',
+      
+      // User Behavior
+      require_email_verification: 'false',
+      min_username_length: '3',
+      max_username_length: '20',
+      allow_username_changes: 'false',
+      username_change_cooldown_days: '30',
+      block_duplicate_usernames: 'true',
+      force_unique_nicknames: 'true',
+      allow_anonymous_mode: 'false',
+      
+      // Advanced Moderation
+      shadow_ban_enabled: 'true',
+      auto_timeout_warnings: 'true',
+      warning_timeout_seconds: '300',
+      mute_duration_minutes: '15',
+      allow_user_reports: 'true',
+      auto_review_flagged_content: 'true',
+      min_reports_for_review: '3',
+      trust_score_enabled: 'true',
+      trust_score_threshold: '50',
+      
+      // Message Features
+      allow_message_editing: 'false',
+      message_edit_time_limit: '300',
+      allow_message_deletion: 'true',
+      show_deleted_placeholder: 'true',
+      enable_message_reactions: 'true',
+      enable_message_threads: 'false',
+      enable_mentions: 'true',
+      enable_hashtags: 'true',
+      max_mentions_per_message: '5',
+      
+      // Media Restrictions
+      allow_gifs: 'true',
+      allow_emoji: 'true',
+      allow_stickers: 'false',
+      max_emoji_per_message: '10',
+      auto_preview_links: 'false',
+      scan_images_for_nsfw: 'true',
+      block_screenshot_sharing: 'false',
+      watermark_images: 'false',
+      
+      // Performance & Limits
+      max_message_history_days: '30',
+      database_cleanup_frequency: '24',
+      cache_messages: 'true',
+      message_cache_size: '500',
+      enable_compression: 'true',
+      optimize_images: 'true',
+      max_concurrent_connections: '1000',
+      connection_timeout_seconds: '300',
+      
+      // Security Enhancements
+      enable_2fa_for_admin: 'false',
+      require_strong_passwords: 'false',
+      session_timeout_hours: '12',
+      max_login_attempts: '5',
+      lockout_duration_minutes: '30',
+      enable_ip_tracking: 'true',
+      block_vpn_users: 'false',
+      block_tor_users: 'false',
+      geo_restriction_enabled: 'false',
+      allowed_countries: '',
+      
+      // Analytics & Logging
+      enable_analytics: 'true',
+      log_message_content: 'false',
+      log_user_actions: 'true',
+      log_admin_actions: 'true',
+      analytics_retention_days: '90',
+      track_user_activity: 'true',
+      generate_daily_reports: 'true',
+      export_logs_enabled: 'true',
+      
+      // Notifications
+      desktop_notifications: 'true',
+      mobile_push_notifications: 'true',
+      email_notifications: 'false',
+      notify_on_mention: 'true',
+      notify_on_dm: 'true',
+      notify_on_ban: 'true',
+      notify_admin_on_report: 'true',
+      notification_sound_enabled: 'true',
+      
+      // Advanced Content Filtering
+      block_all_caps_messages: 'false',
+      max_caps_percentage: '70',
+      block_zalgo_text: 'true',
+      block_unicode_abuse: 'true',
+      detect_language: 'true',
+      allowed_languages: 'en',
+      translate_messages: 'false',
+      censor_mode: 'replace',
+      
+      // Chat Features
+      enable_private_messages: 'true',
+      enable_voice_chat: 'false',
+      enable_video_chat: 'false',
+      enable_screen_sharing: 'false',
+      enable_polls: 'true',
+      enable_bot_commands: 'false',
+      enable_custom_commands: 'false',
+      command_prefix: '/',
+      
+      // Rate Limiting Advanced
+      burst_limit_enabled: 'true',
+      burst_limit_messages: '10',
+      burst_window_seconds: '5',
+      adaptive_rate_limiting: 'true',
+      rate_limit_by_ip: 'true',
+      whitelist_enabled: 'false',
+      blacklist_enabled: 'true',
+      
+      // Experimental Features
+      ai_moderation: 'false',
+      sentiment_analysis: 'false',
+      auto_translation: 'false',
+      smart_suggestions: 'false',
+      predictive_banning: 'false',
+      behavior_scoring: 'true',
     };
     
     for (const [key, value] of Object.entries(defaults)) {
@@ -727,6 +861,754 @@ const AdminSettings = () => {
             </CardContent>
           </Card>
 
+          {/* Room Management */}
+          <Card className="glass-morphism border-indigo-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-indigo-400">
+                <Database className="w-5 h-5" />
+                Room Management
+              </CardTitle>
+              <CardDescription>Room creation and cleanup</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Auto-Delete Empty Rooms</Label>
+                  <p className="text-xs text-muted-foreground">Remove rooms with no activity</p>
+                </div>
+                <Switch
+                  checked={getBool('auto_delete_empty_rooms')}
+                  onCheckedChange={(v) => {
+                    updateSetting('auto_delete_empty_rooms', v.toString());
+                    saveSetting('auto_delete_empty_rooms', v.toString());
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Inactivity Cleanup: {getNum('room_inactivity_cleanup_hours')}h</Label>
+                <Slider
+                  value={[getNum('room_inactivity_cleanup_hours')]}
+                  onValueChange={([v]) => updateSetting('room_inactivity_cleanup_hours', v.toString())}
+                  onValueCommit={([v]) => saveSetting('room_inactivity_cleanup_hours', v.toString())}
+                  min={1}
+                  max={48}
+                  step={1}
+                />
+              </div>
+              <Separator />
+              <div className="space-y-2">
+                <Label>Max Private Rooms Per User: {getNum('max_private_rooms_per_user')}</Label>
+                <Slider
+                  value={[getNum('max_private_rooms_per_user')]}
+                  onValueChange={([v]) => updateSetting('max_private_rooms_per_user', v.toString())}
+                  onValueCommit={([v]) => saveSetting('max_private_rooms_per_user', v.toString())}
+                  min={1}
+                  max={20}
+                  step={1}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Max Users Per Room: {getNum('max_users_per_room')}</Label>
+                <Slider
+                  value={[getNum('max_users_per_room')]}
+                  onValueChange={([v]) => updateSetting('max_users_per_room', v.toString())}
+                  onValueCommit={([v]) => saveSetting('max_users_per_room', v.toString())}
+                  min={2}
+                  max={500}
+                  step={5}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* User Behavior */}
+          <Card className="glass-morphism border-pink-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-pink-400">
+                <AtSign className="w-5 h-5" />
+                User Behavior
+              </CardTitle>
+              <CardDescription>Username and user controls</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Min Username Length: {getNum('min_username_length')}</Label>
+                <Slider
+                  value={[getNum('min_username_length')]}
+                  onValueChange={([v]) => updateSetting('min_username_length', v.toString())}
+                  onValueCommit={([v]) => saveSetting('min_username_length', v.toString())}
+                  min={2}
+                  max={10}
+                  step={1}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Max Username Length: {getNum('max_username_length')}</Label>
+                <Slider
+                  value={[getNum('max_username_length')]}
+                  onValueChange={([v]) => updateSetting('max_username_length', v.toString())}
+                  onValueCommit={([v]) => saveSetting('max_username_length', v.toString())}
+                  min={10}
+                  max={50}
+                  step={1}
+                />
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <Label>Block Duplicate Usernames</Label>
+                <Switch
+                  checked={getBool('block_duplicate_usernames')}
+                  onCheckedChange={(v) => {
+                    updateSetting('block_duplicate_usernames', v.toString());
+                    saveSetting('block_duplicate_usernames', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Allow Username Changes</Label>
+                <Switch
+                  checked={getBool('allow_username_changes')}
+                  onCheckedChange={(v) => {
+                    updateSetting('allow_username_changes', v.toString());
+                    saveSetting('allow_username_changes', v.toString());
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Advanced Moderation */}
+          <Card className="glass-morphism border-rose-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-rose-400">
+                <Filter className="w-5 h-5" />
+                Advanced Moderation
+              </CardTitle>
+              <CardDescription>Sophisticated moderation tools</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Shadow Ban</Label>
+                  <p className="text-xs text-muted-foreground">Hide messages without user knowing</p>
+                </div>
+                <Switch
+                  checked={getBool('shadow_ban_enabled')}
+                  onCheckedChange={(v) => {
+                    updateSetting('shadow_ban_enabled', v.toString());
+                    saveSetting('shadow_ban_enabled', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Trust Score System</Label>
+                  <p className="text-xs text-muted-foreground">Track user reliability</p>
+                </div>
+                <Switch
+                  checked={getBool('trust_score_enabled')}
+                  onCheckedChange={(v) => {
+                    updateSetting('trust_score_enabled', v.toString());
+                    saveSetting('trust_score_enabled', v.toString());
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Trust Score Threshold: {getNum('trust_score_threshold')}</Label>
+                <Slider
+                  value={[getNum('trust_score_threshold')]}
+                  onValueChange={([v]) => updateSetting('trust_score_threshold', v.toString())}
+                  onValueCommit={([v]) => saveSetting('trust_score_threshold', v.toString())}
+                  min={0}
+                  max={100}
+                  step={5}
+                />
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <Label>Allow User Reports</Label>
+                <Switch
+                  checked={getBool('allow_user_reports')}
+                  onCheckedChange={(v) => {
+                    updateSetting('allow_user_reports', v.toString());
+                    saveSetting('allow_user_reports', v.toString());
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Min Reports for Review: {getNum('min_reports_for_review')}</Label>
+                <Slider
+                  value={[getNum('min_reports_for_review')]}
+                  onValueChange={([v]) => updateSetting('min_reports_for_review', v.toString())}
+                  onValueCommit={([v]) => saveSetting('min_reports_for_review', v.toString())}
+                  min={1}
+                  max={20}
+                  step={1}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Message Features */}
+          <Card className="glass-morphism border-teal-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-teal-400">
+                <Hash className="w-5 h-5" />
+                Message Features
+              </CardTitle>
+              <CardDescription>Chat functionality options</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Allow Message Editing</Label>
+                <Switch
+                  checked={getBool('allow_message_editing')}
+                  onCheckedChange={(v) => {
+                    updateSetting('allow_message_editing', v.toString());
+                    saveSetting('allow_message_editing', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Enable Reactions</Label>
+                <Switch
+                  checked={getBool('enable_message_reactions')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_message_reactions', v.toString());
+                    saveSetting('enable_message_reactions', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Enable Mentions</Label>
+                <Switch
+                  checked={getBool('enable_mentions')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_mentions', v.toString());
+                    saveSetting('enable_mentions', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Enable Hashtags</Label>
+                <Switch
+                  checked={getBool('enable_hashtags')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_hashtags', v.toString());
+                    saveSetting('enable_hashtags', v.toString());
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Max Mentions Per Message: {getNum('max_mentions_per_message')}</Label>
+                <Slider
+                  value={[getNum('max_mentions_per_message')]}
+                  onValueChange={([v]) => updateSetting('max_mentions_per_message', v.toString())}
+                  onValueCommit={([v]) => saveSetting('max_mentions_per_message', v.toString())}
+                  min={1}
+                  max={20}
+                  step={1}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Media Restrictions */}
+          <Card className="glass-morphism border-amber-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-amber-400">
+                <Camera className="w-5 h-5" />
+                Media Restrictions
+              </CardTitle>
+              <CardDescription>Image and media controls</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Allow GIFs</Label>
+                <Switch
+                  checked={getBool('allow_gifs')}
+                  onCheckedChange={(v) => {
+                    updateSetting('allow_gifs', v.toString());
+                    saveSetting('allow_gifs', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Allow Emoji</Label>
+                <Switch
+                  checked={getBool('allow_emoji')}
+                  onCheckedChange={(v) => {
+                    updateSetting('allow_emoji', v.toString());
+                    saveSetting('allow_emoji', v.toString());
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Max Emoji Per Message: {getNum('max_emoji_per_message')}</Label>
+                <Slider
+                  value={[getNum('max_emoji_per_message')]}
+                  onValueChange={([v]) => updateSetting('max_emoji_per_message', v.toString())}
+                  onValueCommit={([v]) => saveSetting('max_emoji_per_message', v.toString())}
+                  min={1}
+                  max={50}
+                  step={1}
+                />
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Scan Images for NSFW</Label>
+                  <p className="text-xs text-muted-foreground">Auto-detect inappropriate images</p>
+                </div>
+                <Switch
+                  checked={getBool('scan_images_for_nsfw')}
+                  onCheckedChange={(v) => {
+                    updateSetting('scan_images_for_nsfw', v.toString());
+                    saveSetting('scan_images_for_nsfw', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Optimize Images</Label>
+                <Switch
+                  checked={getBool('optimize_images')}
+                  onCheckedChange={(v) => {
+                    updateSetting('optimize_images', v.toString());
+                    saveSetting('optimize_images', v.toString());
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Performance */}
+          <Card className="glass-morphism border-emerald-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-emerald-400">
+                <Server className="w-5 h-5" />
+                Performance
+              </CardTitle>
+              <CardDescription>System optimization</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Cache Messages</Label>
+                <Switch
+                  checked={getBool('cache_messages')}
+                  onCheckedChange={(v) => {
+                    updateSetting('cache_messages', v.toString());
+                    saveSetting('cache_messages', v.toString());
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Message Cache Size: {getNum('message_cache_size')}</Label>
+                <Slider
+                  value={[getNum('message_cache_size')]}
+                  onValueChange={([v]) => updateSetting('message_cache_size', v.toString())}
+                  onValueCommit={([v]) => saveSetting('message_cache_size', v.toString())}
+                  min={100}
+                  max={5000}
+                  step={100}
+                />
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <Label>Enable Compression</Label>
+                <Switch
+                  checked={getBool('enable_compression')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_compression', v.toString());
+                    saveSetting('enable_compression', v.toString());
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Max Concurrent Connections: {getNum('max_concurrent_connections')}</Label>
+                <Slider
+                  value={[getNum('max_concurrent_connections')]}
+                  onValueChange={([v]) => updateSetting('max_concurrent_connections', v.toString())}
+                  onValueCommit={([v]) => saveSetting('max_concurrent_connections', v.toString())}
+                  min={100}
+                  max={10000}
+                  step={100}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Security Enhancements */}
+          <Card className="glass-morphism border-violet-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-violet-400">
+                <Lock className="w-5 h-5" />
+                Security Enhancements
+              </CardTitle>
+              <CardDescription>Advanced security features</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Enable IP Tracking</Label>
+                <Switch
+                  checked={getBool('enable_ip_tracking')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_ip_tracking', v.toString());
+                    saveSetting('enable_ip_tracking', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Block VPN Users</Label>
+                <Switch
+                  checked={getBool('block_vpn_users')}
+                  onCheckedChange={(v) => {
+                    updateSetting('block_vpn_users', v.toString());
+                    saveSetting('block_vpn_users', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Block Tor Users</Label>
+                <Switch
+                  checked={getBool('block_tor_users')}
+                  onCheckedChange={(v) => {
+                    updateSetting('block_tor_users', v.toString());
+                    saveSetting('block_tor_users', v.toString());
+                  }}
+                />
+              </div>
+              <Separator />
+              <div className="space-y-2">
+                <Label>Session Timeout: {getNum('session_timeout_hours')}h</Label>
+                <Slider
+                  value={[getNum('session_timeout_hours')]}
+                  onValueChange={([v]) => updateSetting('session_timeout_hours', v.toString())}
+                  onValueCommit={([v]) => saveSetting('session_timeout_hours', v.toString())}
+                  min={1}
+                  max={72}
+                  step={1}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Max Login Attempts: {getNum('max_login_attempts')}</Label>
+                <Slider
+                  value={[getNum('max_login_attempts')]}
+                  onValueChange={([v]) => updateSetting('max_login_attempts', v.toString())}
+                  onValueCommit={([v]) => saveSetting('max_login_attempts', v.toString())}
+                  min={3}
+                  max={20}
+                  step={1}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Analytics */}
+          <Card className="glass-morphism border-sky-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sky-400">
+                <TrendingUp className="w-5 h-5" />
+                Analytics & Logging
+              </CardTitle>
+              <CardDescription>Data collection and reports</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Enable Analytics</Label>
+                <Switch
+                  checked={getBool('enable_analytics')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_analytics', v.toString());
+                    saveSetting('enable_analytics', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Log User Actions</Label>
+                <Switch
+                  checked={getBool('log_user_actions')}
+                  onCheckedChange={(v) => {
+                    updateSetting('log_user_actions', v.toString());
+                    saveSetting('log_user_actions', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Log Admin Actions</Label>
+                <Switch
+                  checked={getBool('log_admin_actions')}
+                  onCheckedChange={(v) => {
+                    updateSetting('log_admin_actions', v.toString());
+                    saveSetting('log_admin_actions', v.toString());
+                  }}
+                />
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <Label>Generate Daily Reports</Label>
+                <Switch
+                  checked={getBool('generate_daily_reports')}
+                  onCheckedChange={(v) => {
+                    updateSetting('generate_daily_reports', v.toString());
+                    saveSetting('generate_daily_reports', v.toString());
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Analytics Retention: {getNum('analytics_retention_days')} days</Label>
+                <Slider
+                  value={[getNum('analytics_retention_days')]}
+                  onValueChange={([v]) => updateSetting('analytics_retention_days', v.toString())}
+                  onValueCommit={([v]) => saveSetting('analytics_retention_days', v.toString())}
+                  min={7}
+                  max={365}
+                  step={7}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Notifications */}
+          <Card className="glass-morphism border-fuchsia-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-fuchsia-400">
+                <Bell className="w-5 h-5" />
+                Notifications
+              </CardTitle>
+              <CardDescription>Notification preferences</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Desktop Notifications</Label>
+                <Switch
+                  checked={getBool('desktop_notifications')}
+                  onCheckedChange={(v) => {
+                    updateSetting('desktop_notifications', v.toString());
+                    saveSetting('desktop_notifications', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Mobile Push</Label>
+                <Switch
+                  checked={getBool('mobile_push_notifications')}
+                  onCheckedChange={(v) => {
+                    updateSetting('mobile_push_notifications', v.toString());
+                    saveSetting('mobile_push_notifications', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Notification Sounds</Label>
+                <Switch
+                  checked={getBool('notification_sound_enabled')}
+                  onCheckedChange={(v) => {
+                    updateSetting('notification_sound_enabled', v.toString());
+                    saveSetting('notification_sound_enabled', v.toString());
+                  }}
+                />
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <Label>Notify on Mention</Label>
+                <Switch
+                  checked={getBool('notify_on_mention')}
+                  onCheckedChange={(v) => {
+                    updateSetting('notify_on_mention', v.toString());
+                    saveSetting('notify_on_mention', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Notify Admin on Report</Label>
+                <Switch
+                  checked={getBool('notify_admin_on_report')}
+                  onCheckedChange={(v) => {
+                    updateSetting('notify_admin_on_report', v.toString());
+                    saveSetting('notify_admin_on_report', v.toString());
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Advanced Content Filtering */}
+          <Card className="glass-morphism border-lime-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lime-400">
+                <Search className="w-5 h-5" />
+                Content Filtering
+              </CardTitle>
+              <CardDescription>Advanced content detection</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Block All-Caps Messages</Label>
+                <Switch
+                  checked={getBool('block_all_caps_messages')}
+                  onCheckedChange={(v) => {
+                    updateSetting('block_all_caps_messages', v.toString());
+                    saveSetting('block_all_caps_messages', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Block Zalgo Text</Label>
+                <Switch
+                  checked={getBool('block_zalgo_text')}
+                  onCheckedChange={(v) => {
+                    updateSetting('block_zalgo_text', v.toString());
+                    saveSetting('block_zalgo_text', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Block Unicode Abuse</Label>
+                <Switch
+                  checked={getBool('block_unicode_abuse')}
+                  onCheckedChange={(v) => {
+                    updateSetting('block_unicode_abuse', v.toString());
+                    saveSetting('block_unicode_abuse', v.toString());
+                  }}
+                />
+              </div>
+              <Separator />
+              <div className="space-y-2">
+                <Label>Max Caps Percentage: {getNum('max_caps_percentage')}%</Label>
+                <Slider
+                  value={[getNum('max_caps_percentage')]}
+                  onValueChange={([v]) => updateSetting('max_caps_percentage', v.toString())}
+                  onValueCommit={([v]) => saveSetting('max_caps_percentage', v.toString())}
+                  min={10}
+                  max={100}
+                  step={5}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Chat Features */}
+          <Card className="glass-morphism border-slate-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-slate-400">
+                <Mic className="w-5 h-5" />
+                Chat Features
+              </CardTitle>
+              <CardDescription>Extended functionality</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Enable Private Messages</Label>
+                <Switch
+                  checked={getBool('enable_private_messages')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_private_messages', v.toString());
+                    saveSetting('enable_private_messages', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Enable Voice Chat</Label>
+                <Switch
+                  checked={getBool('enable_voice_chat')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_voice_chat', v.toString());
+                    saveSetting('enable_voice_chat', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Enable Video Chat</Label>
+                <Switch
+                  checked={getBool('enable_video_chat')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_video_chat', v.toString());
+                    saveSetting('enable_video_chat', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Enable Polls</Label>
+                <Switch
+                  checked={getBool('enable_polls')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_polls', v.toString());
+                    saveSetting('enable_polls', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Enable Bot Commands</Label>
+                <Switch
+                  checked={getBool('enable_bot_commands')}
+                  onCheckedChange={(v) => {
+                    updateSetting('enable_bot_commands', v.toString());
+                    saveSetting('enable_bot_commands', v.toString());
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Experimental Features */}
+          <Card className="glass-morphism border-yellow-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-yellow-400">
+                <Activity className="w-5 h-5" />
+                Experimental
+              </CardTitle>
+              <CardDescription>Beta features</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>AI Moderation</Label>
+                  <p className="text-xs text-muted-foreground">Use AI for content filtering</p>
+                </div>
+                <Switch
+                  checked={getBool('ai_moderation')}
+                  onCheckedChange={(v) => {
+                    updateSetting('ai_moderation', v.toString());
+                    saveSetting('ai_moderation', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Sentiment Analysis</Label>
+                <Switch
+                  checked={getBool('sentiment_analysis')}
+                  onCheckedChange={(v) => {
+                    updateSetting('sentiment_analysis', v.toString());
+                    saveSetting('sentiment_analysis', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Behavior Scoring</Label>
+                <Switch
+                  checked={getBool('behavior_scoring')}
+                  onCheckedChange={(v) => {
+                    updateSetting('behavior_scoring', v.toString());
+                    saveSetting('behavior_scoring', v.toString());
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-yellow-400">Predictive Banning</Label>
+                  <p className="text-xs text-muted-foreground">Ban users likely to violate</p>
+                </div>
+                <Switch
+                  checked={getBool('predictive_banning')}
+                  onCheckedChange={(v) => {
+                    updateSetting('predictive_banning', v.toString());
+                    saveSetting('predictive_banning', v.toString());
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Quick Status */}
           <Card className="glass-morphism border-purple-500/20 md:col-span-2">
             <CardHeader className="pb-3">
@@ -760,6 +1642,18 @@ const AdminSettings = () => {
                 </Badge>
                 <Badge className={getBool('files_allowed') ? 'bg-orange-500/20 text-orange-300' : 'bg-red-500/20 text-red-300'}>
                   {getBool('files_allowed') ? `📁 Files ≤${getNum('file_size_limit_mb')}MB` : '📁 Files Blocked'}
+                </Badge>
+                <Badge className="bg-indigo-500/20 text-indigo-300">
+                  🏠 Auto-Delete Rooms: {getNum('room_inactivity_cleanup_hours')}h
+                </Badge>
+                <Badge className="bg-pink-500/20 text-pink-300">
+                  👤 Username Length: {getNum('min_username_length')}-{getNum('max_username_length')}
+                </Badge>
+                <Badge className={getBool('trust_score_enabled') ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'}>
+                  {getBool('trust_score_enabled') ? '⭐ Trust Score ON' : 'Trust Score OFF'}
+                </Badge>
+                <Badge className={getBool('ai_moderation') ? 'bg-yellow-500/20 text-yellow-300 animate-pulse' : 'bg-gray-500/20 text-gray-300'}>
+                  {getBool('ai_moderation') ? '🤖 AI Moderation BETA' : 'AI Moderation OFF'}
                 </Badge>
               </div>
             </CardContent>
