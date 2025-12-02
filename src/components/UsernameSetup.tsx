@@ -19,12 +19,21 @@ const UsernameSetup = ({ onUsernameSet }: UsernameSetupProps) => {
   const [isSetting, setIsSetting] = useState(false);
   const { toast } = useToast();
 
+  // Check for terms acceptance on component mount
   useEffect(() => {
-    checkExistingUsername();
+    checkExistingAndTerms();
   }, []);
 
-  const checkExistingUsername = async () => {
+  const checkExistingAndTerms = async () => {
     try {
+      // Check if terms have been accepted
+      const termsAccepted = localStorage.getItem('terms_accepted');
+      if (!termsAccepted) {
+        console.log("Terms not accepted in username setup");
+        // Terms check is handled by Index component
+        return;
+      }
+      
       const existingUsername = await UserManager.getUsername();
       if (existingUsername) {
         onUsernameSet(existingUsername);
@@ -139,10 +148,10 @@ const UsernameSetup = ({ onUsernameSet }: UsernameSetupProps) => {
             <User className="w-8 h-8 text-white" />
           </div>
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            Enter Your Real Name
+            Choose Your Username
           </CardTitle>
           <CardDescription className="text-gray-400">
-            Your name will be permanently linked to this device (max 10 characters)
+            Choose a unique username that will be permanently linked to this device (max 10 characters)
           </CardDescription>
         </CardHeader>
         
@@ -150,7 +159,7 @@ const UsernameSetup = ({ onUsernameSet }: UsernameSetupProps) => {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="username" className="text-sm font-medium">
-                Real Name
+                Username
               </Label>
               <div className="relative">
                 <Input
@@ -158,7 +167,7 @@ const UsernameSetup = ({ onUsernameSet }: UsernameSetupProps) => {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value.slice(0, 10))}
-                  placeholder="Enter your real name"
+                  placeholder="Choose your username"
                   className="bg-secondary/50 border-white/10 text-white placeholder:text-gray-500 pr-10"
                   disabled={isSetting}
                   minLength={2}
@@ -177,8 +186,8 @@ const UsernameSetup = ({ onUsernameSet }: UsernameSetupProps) => {
 
             <Alert className="bg-blue-500/10 border-blue-500/20 text-blue-300">
               <AlertDescription className="text-sm">
-                <strong>Important:</strong> Your real name will be permanently associated with this device's unique code. 
-                You cannot change it later, and no one else can use the same name. Max 10 characters.
+                <strong>Important:</strong> Your username will be permanently associated with this device's unique code. 
+                You cannot change it later, and no one else can use the same username. Max 10 characters.
               </AlertDescription>
             </Alert>
 
@@ -187,7 +196,7 @@ const UsernameSetup = ({ onUsernameSet }: UsernameSetupProps) => {
               className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-3 h-12 hover:from-purple-700 hover:to-pink-700 disabled:opacity-50"
               disabled={isSetting || isAvailable === false || username.trim().length < 2}
             >
-              {isSetting ? "Setting Name..." : "Set Real Name Permanently"}
+              {isSetting ? "Setting Username..." : "Set Username Permanently"}
             </Button>
           </form>
         </CardContent>

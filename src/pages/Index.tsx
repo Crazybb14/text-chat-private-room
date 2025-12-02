@@ -176,10 +176,19 @@ const Index = () => {
     initializeApp();
   }, [toast]);
 
-  // Check for existing username
+  // Check for existing username and terms acceptance
   useEffect(() => {
-    const checkUsername = async () => {
+    const checkSetup = async () => {
       try {
+        // Check if terms have been accepted
+        const termsAccepted = localStorage.getItem('terms_accepted');
+        if (!termsAccepted) {
+          console.log("Terms not accepted, redirecting to terms");
+          navigate('/terms');
+          return;
+        }
+        
+        // Check for existing username
         const existingUsername = await UserManager.getUsername();
         if (existingUsername) {
           console.log("Found existing username:", existingUsername);
@@ -187,12 +196,12 @@ const Index = () => {
           setUsernameSet(true);
         }
       } catch (error) {
-        console.log("Error checking username:", error);
+        console.log("Error checking setup:", error);
       }
     };
     
-    checkUsername();
-  }, []);
+    checkSetup();
+  }, [navigate]);
 
   // Crash screen
   if (isCrashed) {
