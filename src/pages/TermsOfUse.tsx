@@ -261,8 +261,6 @@ const TermsOfUse = () => {
                   <div className="space-y-2 pl-4 text-gray-300">
                     <p><strong>• Device ID:</strong> A unique identifier permanently linked to your device</p>
                     <p><strong>• Username:</strong> Your chosen real name (permanent, unchangeable)</p>
-                    <p><strong>• Messages:</strong> All chat messages are logged and monitored</p>
-                    <p><strong>• IP Address:</strong> Used for security and ban enforcement</p>
                     <p><strong>• Usage Data:</strong> Time stamps, room access, and activity patterns</p>
                   </div>
                   <p className="leading-relaxed mt-3">
@@ -281,7 +279,6 @@ const TermsOfUse = () => {
                   <div className="space-y-1 pl-4 text-gray-300">
                     <p>• Modify or terminate the Service at any time</p>
                     <p>• Limit access to certain features</p>
-                    <p>• Monitor all communications</p>
                     <p>• Remove users without notice</p>
                     <p>• Update these Terms of Use periodically</p>
                   </div>
@@ -297,22 +294,10 @@ const TermsOfUse = () => {
                     <p>• Illegal activities will be reported to authorities</p>
                     <p>• Violating laws may result in legal action</p>
                     <p>• We cooperate with law enforcement investigations</p>
-                    <p>• Your IP address may be shared with authorities if required</p>
                   </div>
                   <p className="leading-relaxed mt-3">
                     If you attempt to use the Service for illegal purposes, we will take immediate action 
                     including permanent bans and reporting to appropriate authorities.
-                  </p>
-                </section>
-
-                {/* Age Requirements */}
-                <section>
-                  <h2 className="text-2xl font-bold text-white mb-3">Age Requirements</h2>
-                  <p className="leading-relaxed">
-                    You must be at least 13 years old to use this Service. If you are under 18, 
-                    you must have parental permission. We do not knowingly collect information 
-                    from children under 13. If we become aware of such use, we will immediately 
-                    terminate the account.
                   </p>
                 </section>
 
@@ -332,7 +317,7 @@ const TermsOfUse = () => {
                     <Lock className="w-6 h-6 text-purple-400" />
                     Final Agreement
                   </h2>
-                  <p className="leading-relaxed text-purple-200">
+                  <p className="leading-relaxed text-purple-200 font-semibold">
                     By clicking "I AGREE" below, you acknowledge that you have read, understood, 
                     and agree to be bound by all terms and conditions outlined in this document. 
                     You understand that violations will result in immediate bans without warning, 
