@@ -1,20 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Send, X } from "lucide-react";
+import { Send, X, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import db from "@/lib/shared/kliv-database.js";
 import { useToast } from "@/hooks/use-toast";
 import MessageBubble from "@/components/MessageBubble";
 import RoomHeader from "@/components/RoomHeader";
 import FileUpload from "@/components/FileUpload";
 import SharedFile from "@/components/SharedFile";
+import { FriendRequestButton } from "@/components/FriendRequestButton";
+import { FriendList } from "@/components/FriendList";
 import { getDeviceId } from "@/lib/deviceId";
 import PushNotificationManager from "@/lib/pushNotifications";
 import RealTimePushNotifications from "@/lib/realTimePushNotifications";
 import superBanSystem from "@/lib/superAdvancedBanSystem";
 import UserManager from "@/lib/userManagement";
 import { filterContent, FilterSettings } from "@/lib/contentFilter";
+import { FriendManager } from "@/lib/friendSystem";
+import auth from "@/lib/shared/kliv-auth";
 
 interface Message {
   _row_id: number;
@@ -77,8 +82,28 @@ const ChatRoom = () => {
   const [isCrashed, setIsCrashed] = useState(false);
   const [crashCountdown, setCrashCountdown] = useState(1);
   const [adminSettings, setAdminSettings] = useState<Record<string, string>>({});
+  const [showFriends, setShowFriends] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Initialize user profile
+  useEffect(() => {
+    const initializeProfile = async () => {
+      try {
+        const user = await auth.getUser();
+        if (user) {
+          await FriendManager.updateProfile({
+            status: 'online',
+            last_seen: Date.now()
+          });
+        }
+      } catch (error) {
+        console.error("Error initializing profile:", error);
+      }
+    };
+
+    initializeProfile();
+  }, []);
 
   // Load admin settings for content filtering
   useEffect(() => {
@@ -608,6 +633,11 @@ const ChatRoom = () => {
       {/* Header */}
       <RoomHeader room={room} onCopyCode={copyRoomCode} onBack={() => navigate("/")} />
 
+      {/* Friends button */}
+      <div className="absolute top-4 right-4 z-10">
+        <FriendRequestButton onFriendRequestSent={() => {}} />
+      </div>
+
       {/* Messages and Files */}
       <div className="flex-1 overflow-y-auto scrollbar-thin p-4 relative z-10">
         <div className="max-w-3xl mx-auto space-y-4">
@@ -648,6 +678,18 @@ const ChatRoom = () => {
 
       {/* Input with file upload */}
       <div className="border-t border-white/10 p-4 relative z-10">
+        {/* Friends button in chat area */}
+        <div className="max-w-3xl mx-auto mb-3">
+          <Button
+            variant="outline"
+            onClick={() => setShowFriends(true)}
+            className="flex items-center gap-2"
+          >
+            <Users className="w-4 h-4" />
+            My Friends
+          </Button>
+        </div>
+        
         <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex gap-3">
           <FileUpload
             roomId={parseInt(roomId!)}
@@ -671,6 +713,28 @@ const ChatRoom = () => {
           </Button>
         </form>
       </div>
+
+      {/* Friends Dialog */}
+      <Dialog open={showFriends} onOpenChange={setShowFriends}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>My Friends</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-96 overflow-y-auto">
+            <FriendList 
+              onChatWithFriend={(friend) => {
+                toast({
+                  title: "Direct Chat",
+                  description: `Direct messaging with ${friend.username} coming soon!`,
+                });
+                setShowFriends(false);
+              }}
+              showOffline={true}
+              compact={false}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
