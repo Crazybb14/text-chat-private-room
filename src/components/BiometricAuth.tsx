@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Camera, CameraOff, Check, X, RefreshCw, Fingerprint, Scan, AlertCircle, SkipForward } from "lucide-react";
@@ -23,42 +23,34 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
   const [isScanning, setIsScanning] = useState(false);
   const [scanComplete, setScanComplete] = useState(false);
   const [scanFailed, setScanFailed] = useState(false);
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isCheckingPermission, setIsCheckingPermission] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const { toast } = useToast();
 
-  // Cleanup on unmount
+  // Cleanup on unmount only
   useEffect(() => {
     return () => {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
       }
     };
-  }, [cameraStream]);
+  }, []);
 
-  // Auto-play video when stream is set
-  useEffect(() => {
-    if (videoRef.current && cameraStream) {
-      videoRef.current.srcObject = cameraStream;
-      videoRef.current.play().catch(err => {
-        console.log("Video play error:", err);
-      });
-    }
-  }, [cameraStream]);
-
-  const startCamera = useCallback(async () => {
+  const startCamera = async () => {
     setCameraError(null);
     setIsCheckingPermission(true);
     
     try {
       // Stop any existing stream first
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
       }
 
       // Check if mediaDevices is available
@@ -88,13 +80,17 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
       }
 
       if (stream) {
-        setCameraStream(stream);
+        streamRef.current = stream;
         setIsCameraOn(true);
         
         // Make sure video element gets the stream
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+          try {
+            await videoRef.current.play();
+          } catch (playErr) {
+            console.log("Play error (usually safe to ignore):", playErr);
+          }
         }
       }
     } catch (error: unknown) {
@@ -112,9 +108,13 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
         // Try basic settings
         try {
           const basicStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          setCameraStream(basicStream);
+          streamRef.current = basicStream;
           setIsCameraOn(true);
           setCameraError(null);
+          if (videoRef.current) {
+            videoRef.current.srcObject = basicStream;
+            await videoRef.current.play();
+          }
         } catch {
           setCameraError("Unable to access camera.");
         }
@@ -124,18 +124,18 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
     } finally {
       setIsCheckingPermission(false);
     }
-  }, [cameraStream]);
+  };
 
-  const stopCamera = useCallback(() => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-      setCameraStream(null);
-      setIsCameraOn(false);
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  }, [cameraStream]);
+    setIsCameraOn(false);
+  };
 
   const startBiometricScan = async () => {
     if (!isCameraOn) {
