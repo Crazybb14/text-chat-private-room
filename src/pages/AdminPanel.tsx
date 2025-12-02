@@ -151,19 +151,15 @@ const AdminPanel = () => {
       return;
     }
 
-    // Check if biometric is set up
+    // Check if biometric is enabled (optional - user chose to enable it)
     const biometricEnabled = localStorage.getItem('admin_biometric_enabled');
     const hasTemplate = localStorage.getItem('admin_biometric_template');
     
     if (biometricEnabled === 'true' && hasTemplate) {
-      // Require biometric authentication
-      setShowBiometricAuth(true);
-    } else if (!hasTemplate) {
-      // First time setup required
-      setNeedsBiometricSetup(true);
+      // Only require biometric if user previously enabled it
       setShowBiometricAuth(true);
     } else {
-      // Biometric not enabled, proceed normally
+      // Biometric not enabled - proceed normally without forcing setup
       loadData();
       
       // Set up real-time updates
@@ -388,17 +384,16 @@ const AdminPanel = () => {
   };
 
   const handleBiometricCancel = () => {
-    if (needsBiometricSetup) {
-      // If setup is required, don't allow cancel
-      toast({
-        title: "Setup Required",
-        description: "Biometric setup is required for admin access",
-        variant: "destructive"
-      });
-    } else {
-      // Allow cancel if just authenticating
-      navigate("/admin");
-    }
+    // Always allow cancel - biometric is optional
+    setShowBiometricAuth(false);
+    loadData();
+  };
+
+  const handleBiometricSkip = () => {
+    // Skip biometric entirely
+    setShowBiometricAuth(false);
+    setNeedsBiometricSetup(false);
+    loadData();
   };
 
   const handleLogout = () => {
@@ -453,6 +448,8 @@ const AdminPanel = () => {
         setupMode={needsBiometricSetup}
         onSuccess={handleBiometricSuccess}
         onCancel={handleBiometricCancel}
+        onSkip={handleBiometricSkip}
+        isOptional={true}
       />
     );
   }
@@ -474,11 +471,15 @@ const AdminPanel = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setShowBiometricAuth(true)}
+              onClick={() => {
+                const hasTemplate = localStorage.getItem('admin_biometric_template');
+                setNeedsBiometricSetup(!hasTemplate);
+                setShowBiometricAuth(true);
+              }}
               className="text-muted-foreground hover:text-foreground"
             >
               <Camera className="w-4 h-4 mr-2" />
-              Re-verify
+              {localStorage.getItem('admin_biometric_template') ? 'Face ID' : 'Set Up Face ID'}
             </Button>
           </div>
           <Button

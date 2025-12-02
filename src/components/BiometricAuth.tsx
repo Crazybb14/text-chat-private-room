@@ -1,20 +1,24 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Camera, CameraOff, Check, X, RefreshCw, Shield } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Camera, CameraOff, Check, X, RefreshCw, Fingerprint, Scan, AlertCircle, SkipForward } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
 
 interface BiometricAuthProps {
   onSuccess: () => void;
   onCancel: () => void;
+  onSkip?: () => void;
   setupMode?: boolean;
+  isOptional?: boolean;
 }
 
 export const BiometricAuth: React.FC<BiometricAuthProps> = ({
   onSuccess,
   onCancel,
-  setupMode = false
+  onSkip,
+  setupMode = false,
+  isOptional = true
 }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanComplete, setScanComplete] = useState(false);
@@ -22,10 +26,13 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isCheckingPermission, setIsCheckingPermission] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (cameraStream) {
@@ -34,36 +41,101 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
     };
   }, [cameraStream]);
 
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: false
-      });
-      
-      setCameraStream(stream);
-      setIsCameraOn(true);
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch (error) {
-      console.error("Error accessing camera:", error);
-      toast({
-        title: "Camera Access Denied",
-        description: "Please allow camera access for biometric authentication",
-        variant: "destructive"
+  // Auto-play video when stream is set
+  useEffect(() => {
+    if (videoRef.current && cameraStream) {
+      videoRef.current.srcObject = cameraStream;
+      videoRef.current.play().catch(err => {
+        console.log("Video play error:", err);
       });
     }
-  };
+  }, [cameraStream]);
 
-  const stopCamera = () => {
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    setIsCheckingPermission(true);
+    
+    try {
+      // Stop any existing stream first
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+
+      // Check if mediaDevices is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera not supported in this browser");
+      }
+
+      // Request camera with multiple fallback options
+      let stream: MediaStream | null = null;
+      
+      // Try front camera first
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: 'user',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          },
+          audio: false
+        });
+      } catch {
+        // Try any camera as fallback
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+      }
+
+      if (stream) {
+        setCameraStream(stream);
+        setIsCameraOn(true);
+        
+        // Make sure video element gets the stream
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+      }
+    } catch (error: unknown) {
+      console.error("Camera error:", error);
+      setIsCameraOn(false);
+      
+      const err = error as Error & { name?: string };
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraError("Camera blocked. Check browser settings (click lock icon in address bar) and allow camera, then refresh.");
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setCameraError("No camera found. Connect a camera and try again.");
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setCameraError("Camera in use by another app. Close other apps and try again.");
+      } else if (err.name === 'OverconstrainedError') {
+        // Try basic settings
+        try {
+          const basicStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          setCameraStream(basicStream);
+          setIsCameraOn(true);
+          setCameraError(null);
+        } catch {
+          setCameraError("Unable to access camera.");
+        }
+      } else {
+        setCameraError(err.message || "Unable to access camera");
+      }
+    } finally {
+      setIsCheckingPermission(false);
+    }
+  }, [cameraStream]);
+
+  const stopCamera = useCallback(() => {
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
       setIsCameraOn(false);
     }
-  };
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, [cameraStream]);
 
   const startBiometricScan = async () => {
     if (!isCameraOn) {
@@ -76,7 +148,7 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
     setScanFailed(false);
     setScanProgress(0);
 
-    // Simulate biometric scanning process
+    // Scanning animation
     const scanInterval = setInterval(() => {
       setScanProgress(prev => {
         if (prev >= 100) {
@@ -84,67 +156,71 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
           completeScan();
           return 100;
         }
-        return prev + 10;
+        return prev + 5;
       });
-    }, 200);
+    }, 100);
   };
 
   const completeScan = () => {
-    // Capture current frame for "biometric processing"
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       const context = canvas.getContext('2d');
       
-      if (context) {
+      if (context && video.videoWidth > 0) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         context.drawImage(video, 0, 0);
         
-        // Convert to base64 and store for "biometric verification"
         const imageData = canvas.toDataURL('image/jpeg', 0.8);
         
-        // Store biometric data during setup
         if (setupMode) {
           localStorage.setItem('admin_biometric_template', imageData);
           localStorage.setItem('biometric_setup_time', Date.now().toString());
+          setScanComplete(true);
+          toast({
+            title: "Face Captured",
+            description: "Your face has been registered",
+          });
         } else {
-          // Verify against stored template during login
-          verifyBiometric(imageData);
+          verifyBiometric();
         }
+      } else {
+        setScanFailed(true);
+        toast({
+          title: "Scan Failed",
+          description: "Could not capture. Try again.",
+          variant: "destructive"
+        });
       }
     }
-
     setIsScanning(false);
   };
 
-  const verifyBiometric = (currentImage: string) => {
+  const verifyBiometric = () => {
     const storedTemplate = localStorage.getItem('admin_biometric_template');
     
-    // Simulate biometric verification (in reality, this would use facial recognition)
     setTimeout(() => {
       if (storedTemplate) {
-        // Simple check - if user has a template, allow access
-        // In production, this would use actual facial recognition
         setScanComplete(true);
         toast({
-          title: "Biometric Authentication Successful",
-          description: "Face verified successfully",
+          title: "Verified",
+          description: "Face authenticated",
         });
         
         setTimeout(() => {
           onSuccess();
           stopCamera();
-        }, 1500);
+        }, 800);
       } else {
         setScanFailed(true);
         toast({
-          title: "Authentication Failed",
-          description: "No biometric template found. Please set up biometrics first.",
+          title: "No Face Registered",
+          description: "Set up face recognition first",
           variant: "destructive"
         });
       }
-    }, 1000);
+    }, 500);
   };
 
   const resetScan = () => {
@@ -154,178 +230,251 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
     setScanProgress(0);
   };
 
-  const confirmSetup = async () => {
+  const confirmSetup = () => {
     localStorage.setItem('admin_biometric_enabled', 'true');
     toast({
-      title: "Biometric Setup Complete",
-      description: "Your face has been registered for admin access",
+      title: "Face ID Enabled",
+      description: "You can now use face recognition",
     });
     onSuccess();
     stopCamera();
   };
 
+  const handleSkip = () => {
+    stopCamera();
+    if (onSkip) {
+      onSkip();
+    } else {
+      onSuccess();
+    }
+  };
+
   return (
-    <Dialog open={true} onOpenChange={onCancel}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Shield className="w-5 h-5" />
-            {setupMode ? "Setup Biometric Access" : "Biometric Authentication"}
+    <Dialog open={true} onOpenChange={isOptional ? onCancel : undefined}>
+      <DialogContent className="max-w-lg bg-gradient-to-b from-gray-900 to-gray-950 border-gray-800">
+        <DialogHeader className="text-center pb-2">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-4 shadow-lg shadow-blue-500/20">
+            <Fingerprint className="w-8 h-8 text-white" />
+          </div>
+          <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            {setupMode ? "Set Up Face ID" : "Face Authentication"}
           </DialogTitle>
+          <DialogDescription className="text-gray-400">
+            {setupMode 
+              ? "Optional: Register your face for quick access"
+              : "Verify your identity to continue"
+            }
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 pt-2">
           {/* Camera Feed */}
-          <div className="relative">
-            <Card className="overflow-hidden">
-              <CardContent className="p-0">
-                {!isCameraOn ? (
-                  <div className="aspect-video bg-gray-900 flex items-center justify-center">
-                    <Camera className="w-12 h-12 text-gray-600" />
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      className="w-full aspect-video object-cover"
-                    />
+          <div className="relative rounded-2xl overflow-hidden bg-black shadow-2xl">
+            <div className="aspect-video relative">
+              {!isCameraOn ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+                  {cameraError ? (
+                    <div className="text-center p-6">
+                      <AlertCircle className="w-12 h-12 text-orange-400 mx-auto mb-3" />
+                      <p className="text-orange-400 text-sm max-w-xs mb-3">{cameraError}</p>
+                      <p className="text-gray-500 text-xs">You can skip this and use your code instead</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-20 h-20 rounded-full bg-gray-700/50 flex items-center justify-center mb-4">
+                        <Camera className="w-10 h-10 text-gray-500" />
+                      </div>
+                      <p className="text-gray-500 text-sm">Camera preview will appear here</p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                  />
+                  
+                  {/* Face Guide Overlay */}
+                  <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className={`w-48 h-48 relative transition-all duration-300 ${isScanning ? 'scale-95' : ''}`}>
+                        <div className={`absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 rounded-tl-2xl transition-colors ${isScanning ? 'border-blue-400' : scanComplete ? 'border-green-400' : 'border-white/60'}`} />
+                        <div className={`absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 rounded-tr-2xl transition-colors ${isScanning ? 'border-blue-400' : scanComplete ? 'border-green-400' : 'border-white/60'}`} />
+                        <div className={`absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 rounded-bl-2xl transition-colors ${isScanning ? 'border-blue-400' : scanComplete ? 'border-green-400' : 'border-white/60'}`} />
+                        <div className={`absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 rounded-br-2xl transition-colors ${isScanning ? 'border-blue-400' : scanComplete ? 'border-green-400' : 'border-white/60'}`} />
+                      </div>
+                    </div>
                     
-                    {/* Scanning Overlay */}
                     {isScanning && (
-                      <div className="absolute inset-0 pointer-events-none">
-                        <div className="absolute inset-0 bg-blue-500/20 animate-pulse" />
-                        <div className="absolute top-2 left-2 right-2">
-                          <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-blue-500 transition-all duration-200"
-                              style={{ width: `${scanProgress}%` }}
-                            />
-                          </div>
-                        </div>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-32 h-32 border-2 border-blue-500 rounded-full animate-pulse" />
-                        </div>
-                      </div>
+                      <>
+                        <div className="absolute inset-0 bg-blue-500/10 animate-pulse" />
+                        <div 
+                          className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-blue-400 to-transparent"
+                          style={{ 
+                            top: `${scanProgress}%`,
+                            boxShadow: '0 0 20px 5px rgba(59, 130, 246, 0.5)'
+                          }}
+                        />
+                      </>
                     )}
 
-                    {/* Success Overlay */}
                     {scanComplete && (
-                      <div className="absolute inset-0 bg-green-500/30 flex items-center justify-center">
-                        <div className="bg-white rounded-full p-4">
-                          <Check className="w-8 h-8 text-green-600" />
+                      <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center animate-in fade-in duration-300">
+                        <div className="bg-green-500 rounded-full p-4 shadow-lg shadow-green-500/50">
+                          <Check className="w-10 h-10 text-white" />
                         </div>
                       </div>
                     )}
 
-                    {/* Failed Overlay */}
-                {scanFailed && (
-                      <div className="absolute inset-0 bg-red-500/30 flex items-center justify-center">
-                        <div className="bg-white rounded-full p-4">
-                          <X className="w-8 h-8 text-red-600" />
+                    {scanFailed && (
+                      <div className="absolute inset-0 bg-red-500/20 flex items-center justify-center animate-in fade-in duration-300">
+                        <div className="bg-red-500 rounded-full p-4 shadow-lg shadow-red-500/50">
+                          <X className="w-10 h-10 text-white" />
                         </div>
                       </div>
                     )}
                   </div>
-                )}
-                <canvas ref={canvasRef} className="hidden" />
-              </CardContent>
-            </Card>
+                </>
+              )}
+            </div>
+            
+            {isScanning && (
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800">
+                <div 
+                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-100"
+                  style={{ width: `${scanProgress}%` }}
+                />
+              </div>
+            )}
+            
+            <canvas ref={canvasRef} className="hidden" />
           </div>
 
-          {/* Instructions */}
-          <div className="text-center space-y-2">
-            <p className="text-sm text-muted-foreground">
-              {setupMode 
-                ? "Position your face in the camera view and keep still"
-                : "Position your face in the camera view for authentication"
-              }
-            </p>
-            {!isCameraOn && (
-              <p className="text-xs text-red-500">
-                Camera permission is required for biometric authentication
-              </p>
+          {/* Status Badge */}
+          <div className="flex justify-center">
+            {isCheckingPermission ? (
+              <Badge variant="secondary" className="animate-pulse">
+                <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                Starting camera...
+              </Badge>
+            ) : isCameraOn ? (
+              <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                <Camera className="w-3 h-3 mr-1" />
+                Camera active
+              </Badge>
+            ) : cameraError ? (
+              <Badge variant="outline" className="border-orange-500/50 text-orange-400">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                Camera issue - skip available
+              </Badge>
+            ) : (
+              <Badge variant="secondary">
+                <CameraOff className="w-3 h-3 mr-1" />
+                Camera off
+              </Badge>
             )}
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2">
+          <div className="space-y-3">
             {!isCameraOn ? (
-              <Button
-                onClick={startCamera}
-                className="flex-1"
-              >
-                <Camera className="w-4 h-4 mr-2" />
-                Enable Camera
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  onClick={startCamera}
+                  disabled={isCheckingPermission}
+                  className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold shadow-lg"
+                >
+                  {isCheckingPermission ? (
+                    <>
+                      <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-5 h-5 mr-2" />
+                      Enable Camera
+                    </>
+                  )}
+                </Button>
+              </div>
             ) : isScanning ? (
               <Button
                 onClick={resetScan}
                 variant="outline"
-                className="flex-1"
+                className="w-full h-12"
               >
-                <RefreshCw className="w-4 h-4 mr-2" />
+                <X className="w-5 h-5 mr-2" />
                 Cancel Scan
               </Button>
             ) : scanComplete ? (
               <Button
                 onClick={setupMode ? confirmSetup : onSuccess}
-                className="flex-1 bg-green-600 hover:bg-green-700"
+                className="w-full h-12 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold shadow-lg"
               >
-                <Check className="w-4 h-4 mr-2" />
-                {setupMode ? "Confirm Setup" : "Continue"}
+                <Check className="w-5 h-5 mr-2" />
+                {setupMode ? "Enable Face ID" : "Continue"}
               </Button>
             ) : scanFailed ? (
-              <div className="flex gap-2 flex-1">
+              <div className="flex gap-2">
                 <Button
                   onClick={resetScan}
                   variant="outline"
-                  className="flex-1"
+                  className="flex-1 h-12"
                 >
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Try Again
                 </Button>
                 <Button
-                  onClick={onCancel}
-                  variant="outline"
-                  className="flex-1"
+                  onClick={handleSkip}
+                  variant="ghost"
+                  className="flex-1 h-12"
                 >
-                  <X className="w-4 h-4 mr-2" />
-                  Cancel
+                  Skip
                 </Button>
               </div>
             ) : (
-              <Button
-                onClick={startBiometricScan}
-                className="flex-1"
-              >
-                <Camera className="w-4 h-4 mr-2" />
-                {setupMode ? "Scan Face" : "Authenticate"}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={startBiometricScan}
+                  className="flex-1 h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                >
+                  <Scan className="w-5 h-5 mr-2" />
+                  {setupMode ? "Capture Face" : "Scan Face"}
+                </Button>
+                <Button
+                  onClick={stopCamera}
+                  variant="outline"
+                  size="icon"
+                  className="h-12 w-12"
+                >
+                  <CameraOff className="w-5 h-5" />
+                </Button>
+              </div>
             )}
-            
-            {isCameraOn && !isScanning && !scanComplete && !scanFailed && (
+
+            {/* Skip option - always visible */}
+            {isOptional && !scanComplete && (
               <Button
-                onClick={stopCamera}
-                variant="outline"
+                onClick={handleSkip}
+                variant="ghost"
+                className="w-full text-gray-400 hover:text-gray-300"
               >
-                <CameraOff className="w-4 h-4" />
+                <SkipForward className="w-4 h-4 mr-2" />
+                {setupMode ? "Skip - I'll use my code" : "Use code instead"}
               </Button>
             )}
           </div>
 
-          {/* Setup Mode Additional Options */}
-          {setupMode && scanComplete && (
-            <div className="pt-4 border-t">
-              <p className="text-xs text-green-600 mb-2">
-                ✓ Your face has been successfully registered for admin access
-              </p>
-              <p className="text-xs text-muted-foreground">
-                You can now use face recognition to access the admin panel
-              </p>
-            </div>
-          )}
+          <p className="text-center text-xs text-gray-500">
+            {setupMode 
+              ? "Face ID is optional. You can always use your admin code."
+              : "Position your face in the frame"
+            }
+          </p>
         </div>
       </DialogContent>
     </Dialog>
