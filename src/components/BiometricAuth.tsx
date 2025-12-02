@@ -42,6 +42,17 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
     };
   }, []);
 
+  // Ensure video element is connected to stream when camera is on
+  useEffect(() => {
+    if (isCameraOn && streamRef.current && videoRef.current) {
+      console.log("Effect: Connecting stream to video element");
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch(err => console.log("Play in effect:", err));
+      }
+    }
+  }, [isCameraOn]);
+
   const startCamera = async () => {
     setCameraError(null);
     setIsCheckingPermission(true);
@@ -81,16 +92,32 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
 
       if (stream) {
         streamRef.current = stream;
-        setIsCameraOn(true);
+        
+        console.log("Camera stream obtained:", stream.getTracks());
         
         // Make sure video element gets the stream
         if (videoRef.current) {
+          console.log("Setting stream to video element");
           videoRef.current.srcObject = stream;
+          
+          // Wait for video to load metadata
+          videoRef.current.onloadedmetadata = () => {
+            console.log("Video metadata loaded, dimensions:", videoRef.current?.videoWidth, "x", videoRef.current?.videoHeight);
+            setIsCameraOn(true);
+          };
+          
           try {
             await videoRef.current.play();
+            console.log("Video playing successfully");
+            setIsCameraOn(true);
           } catch (playErr) {
-            console.log("Play error (usually safe to ignore):", playErr);
+            console.log("Play error:", playErr);
+            // Still set camera on even if play fails - browser might require interaction
+            setIsCameraOn(true);
           }
+        } else {
+          console.log("Video ref is null!");
+          setIsCameraOn(true);
         }
       }
     } catch (error: unknown) {
@@ -270,7 +297,7 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
         <div className="space-y-4 pt-2">
           {/* Camera Feed */}
           <div className="relative rounded-2xl overflow-hidden bg-black shadow-2xl">
-            <div className="aspect-video relative">
+            <div className="aspect-video relative bg-black">
               {!isCameraOn ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
                   {cameraError ? (
@@ -295,11 +322,12 @@ export const BiometricAuth: React.FC<BiometricAuthProps> = ({
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover absolute inset-0"
+                    style={{ display: 'block', minHeight: '100%', minWidth: '100%' }}
                   />
                   
                   {/* Face Guide Overlay */}
-                  <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute inset-0 pointer-events-none z-10">
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className={`w-48 h-48 relative transition-all duration-300 ${isScanning ? 'scale-95' : ''}`}>
                         <div className={`absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 rounded-tl-2xl transition-colors ${isScanning ? 'border-blue-400' : scanComplete ? 'border-green-400' : 'border-white/60'}`} />
