@@ -50,14 +50,56 @@ export const FriendRequestButton: React.FC<FriendRequestButtonProps> = ({
       const user = await auth.getUser();
       if (!user) return;
 
-      // Search user_profiles by username (simulated - would need endpoint or different query)
+      // Search for users in multiple places
       const { data: profiles } = await db.query('user_profiles', {
         username: `ilike.*${searchQuery}*`,
         user_id: `neq.${user.user_id}`,
         limit: 10
       });
 
-      setSearchResults(profiles || []);
+      // Also check online_users and messages for active usernames
+      const { data: onlineUsers } = await db.query('online_users', {
+        username: `ilike.*${searchQuery}*`,
+        limit: 5
+      });
+
+      const { data: messageUsers } = await db.query('messages', {
+        sender_name: `ilike.*${searchQuery}*`,
+        limit: 5
+      });
+
+      // Merge unique results
+      const uniqueUsers = new Map<string, User>();
+      
+      // Add from profiles
+      (profiles || []).forEach((profile) => {
+        uniqueUsers.set(profile.user_id, profile);
+      });
+
+      // Add from online users
+      (onlineUsers || []).forEach((onlineUser) => {
+        if (!uniqueUsers.has(onlineUser.device_id)) {
+          uniqueUsers.set(onlineUser.device_id, {
+            user_id: onlineUser.device_id,
+            username: onlineUser.username,
+            status: 'online',
+            last_seen: Date.now()
+          });
+        }
+      });
+
+      // Add from message senders
+      (messageUsers || []).forEach((message) => {
+        if (!uniqueUsers.has(message.device_id) && message.device_id) {
+          uniqueUsers.set(message.device_id, {
+            user_id: message.device_id,
+            username: message.sender_name,
+            status: 'offline'
+          });
+        }
+      });
+
+      setSearchResults(Array.from(uniqueUsers.values()));
     } catch (error) {
       console.error("Error searching users:", error);
       toast({

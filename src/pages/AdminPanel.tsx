@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, LogOut, MessageSquare, Ban, Plus, Lightbulb, Scale, Bell, FileText, AlertTriangle, Send, Zap, Settings, Image, MapPin } from "lucide-react";
+import { Shield, LogOut, MessageSquare, Ban, Plus, Lightbulb, Scale, Bell, FileText, AlertTriangle, Send, Zap, Settings, Image, MapPin, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +22,7 @@ import AdminQuickActions from "@/components/AdminQuickActions";
 import AdminSettings from "@/components/AdminSettings";
 import AdminFileApproval from "@/components/AdminFileApproval";
 import AdminIPLogger from "@/components/AdminIPLogger";
+import { BiometricAuth } from "@/components/BiometricAuth";
 
 interface Room {
   _row_id: number;
@@ -82,6 +83,8 @@ const AdminPanel = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [isCrashed, setIsCrashed] = useState(false);
   const [crashCountdown, setCrashCountdown] = useState(1);
+  const [showBiometricAuth, setShowBiometricAuth] = useState(false);
+  const [needsBiometricSetup, setNeedsBiometricSetup] = useState(false);
 
   // Listen for crash command (crashes admin too!)
   useEffect(() => {
@@ -147,11 +150,26 @@ const AdminPanel = () => {
       navigate("/admin");
       return;
     }
-    loadData();
+
+    // Check if biometric is set up
+    const biometricEnabled = localStorage.getItem('admin_biometric_enabled');
+    const hasTemplate = localStorage.getItem('admin_biometric_template');
     
-    // Real-time updates - refresh every 1 second
-    const interval = setInterval(loadData, 1000);
-    return () => clearInterval(interval);
+    if (biometricEnabled === 'true' && hasTemplate) {
+      // Require biometric authentication
+      setShowBiometricAuth(true);
+    } else if (!hasTemplate) {
+      // First time setup required
+      setNeedsBiometricSetup(true);
+      setShowBiometricAuth(true);
+    } else {
+      // Biometric not enabled, proceed normally
+      loadData();
+      
+      // Set up real-time updates
+      const interval = setInterval(loadData, 1000);
+      return () => clearInterval(interval);
+    }
   }, [navigate, loadData]);
 
   const loadRoomMessages = async (room: Room) => {
@@ -359,6 +377,30 @@ const AdminPanel = () => {
     }
   };
 
+  const handleBiometricSuccess = () => {
+    setShowBiometricAuth(false);
+    setNeedsBiometricSetup(false);
+    loadData();
+    
+    // Set up real-time updates after successful auth
+    const interval = setInterval(loadData, 1000);
+    return () => clearInterval(interval);
+  };
+
+  const handleBiometricCancel = () => {
+    if (needsBiometricSetup) {
+      // If setup is required, don't allow cancel
+      toast({
+        title: "Setup Required",
+        description: "Biometric setup is required for admin access",
+        variant: "destructive"
+      });
+    } else {
+      // Allow cancel if just authenticating
+      navigate("/admin");
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("isAdmin");
     navigate("/admin");
@@ -404,6 +446,18 @@ const AdminPanel = () => {
     );
   }
 
+  // Biometric Authentication Overlay
+  if (showBiometricAuth) {
+    return (
+      <BiometricAuth
+        setupMode={needsBiometricSetup}
+        onSuccess={handleBiometricSuccess}
+        onCancel={handleBiometricCancel}
+      />
+    );
+  }
+
+  // Main Admin Panel
   return (
     <div className="min-h-screen bg-background">
       {/* Background gradient */}
@@ -417,6 +471,15 @@ const AdminPanel = () => {
               <Shield className="w-6 h-6 text-red-400" />
             </div>
             <h1 className="text-xl font-bold">Admin Panel</h1>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowBiometricAuth(true)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Camera className="w-4 h-4 mr-2" />
+              Re-verify
+            </Button>
           </div>
           <Button
             variant="ghost"
