@@ -9,17 +9,8 @@ import MessageBubble from "@/components/MessageBubble";
 import RoomHeader from "@/components/RoomHeader";
 import FileUpload from "@/components/FileUpload";
 import SharedFile from "@/components/SharedFile";
-import OnlineStatusTracker from "@/components/OnlineStatusTracker";
-import PrivateRoomCleaner from "@/components/PrivateRoomCleaner";
-import PrivateRoomApproval from "@/components/PrivateRoomApproval";
-import RoomJoinRequest from "@/components/RoomJoinRequest";
-import LockdownScreen from "@/components/LockdownScreen";
 import { getDeviceId } from "@/lib/deviceId";
 import PushNotificationManager from "@/lib/pushNotifications";
-import RealTimePushNotifications from "@/lib/realTimePushNotifications";
-import superBanSystem from "@/lib/superAdvancedBanSystem";
-import UserManager from "@/lib/userManagement";
-import { filterContent, FilterSettings } from "@/lib/contentFilter";
 import RealTimePushNotifications from "@/lib/realTimePushNotifications";
 import superBanSystem from "@/lib/superAdvancedBanSystem";
 import UserManager from "@/lib/userManagement";
@@ -86,10 +77,6 @@ const ChatRoom = () => {
   const [isCrashed, setIsCrashed] = useState(false);
   const [crashCountdown, setCrashCountdown] = useState(1);
   const [adminSettings, setAdminSettings] = useState<Record<string, string>>({});
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [banTime, setBanTime] = useState<string>("");
-  const [showPrivateRoomCleaner, setShowPrivateRoomCleaner] = useState(true);
-  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -165,16 +152,7 @@ const ChatRoom = () => {
   }, []);
 
   const scrollToBottom = () => {
-    if (autoScroll) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  };
-
-  // Handle user scrolling up to disable auto-scroll
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const element = e.currentTarget;
-    const isAtBottom = element.scrollHeight - element.scrollTop <= element.clientHeight + 50;
-    setAutoScroll(isAtBottom);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   // Load username from UserManager
@@ -272,13 +250,10 @@ const ChatRoom = () => {
       // Check for ban by username
       const userBans = await db.query("bans", { username: `eq.${user}` });
       if (userBans.length > 0) {
-        const ban = userBans[0];
         if (!isBanned && showToast) {
-          const banEndsAt = new Date(Date.now() + (ban.ban_duration || 0) * 1000);
-          setBanTime(banEndsAt.toISOString());
           toast({
-            title: `⛔ ${user} is BANNED`,
-            description: `Banned until ${banEndsAt.toLocaleString()}. Reason: ${ban.ban_reason || "Contact administrator"}`,
+            title: "You are banned",
+            description: "You have been banned from this chat",
             variant: "destructive",
           });
         }
@@ -396,41 +371,6 @@ const ChatRoom = () => {
     loadRoom();
     checkBanStatus(username, device, true);
 
-    // User activity tracking for online status
-    const updateActivity = async () => {
-      try {
-        await db.insert("online_users", {
-          username: username,
-          device_id: device,
-          room_id: parseInt(roomId!),
-          last_seen: new Date().toISOString(),
-          is_online: true,
-        });
-      } catch (err) {
-        // Ignore errors (user might already be online)
-      }
-    };
-
-    // Initial login
-    updateActivity();
-
-    // Update activity every 30 seconds
-    const activityInterval = setInterval(updateActivity, 30000);
-
-    // Set user offline when leaving
-    const setOffline = async () => {
-      try {
-        await db.update("online_users", { device_id: `eq.${device}` }, { 
-          is_online: false,
-          last_seen: new Date().toISOString(),
-        });
-      } catch (err) {
-        // Ignore errors
-      }
-    };
-
-    window.addEventListener('beforeunload', setOffline);
-
     // Real-time updates - poll every 500ms (0.5 seconds)
     pollInterval.current = setInterval(() => {
       loadMessages();
@@ -442,9 +382,6 @@ const ChatRoom = () => {
       if (pollInterval.current) {
         clearInterval(pollInterval.current);
       }
-      clearInterval(activityInterval);
-      setOffline();
-      window.removeEventListener('beforeunload', setOffline);
     };
   }, [roomId, navigate, username, loadRoom, checkBanStatus, loadMessages]);
 
@@ -507,26 +444,23 @@ const ChatRoom = () => {
         });
         
         // Create notification for the user
-        const banEndsAt = new Date(Date.now() + 86400 * 1000);
         await db.insert("notifications", {
           type: "ban",
-          message: `${username} BANNED until ${banEndsAt.toLocaleString()}. Reason: ${banReason}. Message blocked.`,
+          message: `You have been BANNED for: ${banReason}. Your message "${messageContent.substring(0, 50)}..." was blocked.`,
           recipient_device_id: deviceId,
           is_read: 0,
           created_by_admin: 0,
         });
-        
-        setBanTime(banEndsAt.toISOString());
       } catch (banErr) {
         console.log("Ban insert error:", banErr);
       }
       
       setIsBanned(true);
       
-      // Show detailed ban notification with username and time
+      // Show big ban notification
       toast({
-        title: `⛔ ${username} is BANNED`,
-        description: `Banned until ${new Date(Date.now() + 86400 * 1000).toLocaleString()}. Reason: ${banReason}`,
+        title: "⛔ YOU HAVE BEEN BANNED",
+        description: `Your message was blocked and you are now banned.\nReason: ${banReason}`,
         variant: "destructive",
       });
       
@@ -619,7 +553,19 @@ const ChatRoom = () => {
             {crashCountdown}
           </div>
           <p className="text-xl text-gray-400">Reconnecting in {crashCountdown} seconds...</p>
+          <div className="mt-8 w-64 h-2 bg-gray-800 rounded-full mx-auto overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-red-500 to-orange-500 transition-all duration-1000"
+              style={{ width: `${(1 - crashCountdown) * 100}%` }}
+            />
+          </div>
         </div>
+        <style>{`
+          @keyframes glitch {
+            0%, 100% { transform: translateX(0); opacity: 0.3; }
+            50% { transform: translateX(${Math.random() > 0.5 ? '' : '-'}${10 + Math.random() * 20}px); opacity: 0.7; }
+          }
+        `}</style>
       </div>
     );
   }
@@ -662,25 +608,9 @@ const ChatRoom = () => {
       {/* Header */}
       <RoomHeader room={room} onCopyCode={copyRoomCode} onBack={() => navigate("/")} />
 
-      {/* Auto-scroll indicator */}
-      {!autoScroll && (
-        <div 
-          className="bg-blue-500 text-white text-xs px-2 py-1 text-center cursor-pointer hover:bg-blue-600"
-          onClick={() => {
-            scrollToBottom();
-            setAutoScroll(true);
-          }}
-        >
-          Click to scroll to new messages ↓
-        </div>
-      )}
-
       {/* Messages and Files */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin p-4 relative z-10" onScroll={handleScroll}>
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-4 relative z-10">
         <div className="max-w-3xl mx-auto space-y-4">
-          {/* Online Status Tracker */}
-          <OnlineStatusTracker roomId={parseInt(roomId!)} />
-          
           {/* Show uploaded files */}
           {uploadedFiles.length > 0 && (
             <div className="space-y-3">
@@ -715,14 +645,6 @@ const ChatRoom = () => {
           <div ref={messagesEndRef} />
         </div>
       </div>
-      
-      {/* Background Private Room Cleaner */}
-      {showPrivateRoomCleaner && (
-        <PrivateRoomCleaner 
-          isTimerActive={true} 
-          onCleanup={() => console.log("Inactive private rooms cleaned")} 
-        />
-      )}
 
       {/* Input with file upload */}
       <div className="border-t border-white/10 p-4 relative z-10">

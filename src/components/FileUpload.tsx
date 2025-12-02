@@ -57,86 +57,37 @@ const FileUpload = ({ roomId, roomType, username, onFileUploaded }: FileUploadPr
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-const fileUpload = async (file: File) => {
-    try {
-      if (!isMediaFile(file.type)) {
-        toast({
-          title: "❌ Invalid file type",
-          description: "Only images and videos are allowed",
-          variant: "destructive",
-        });
-        return;
-      }
 
-      if (file.size > (settings.max_file_size ? parseInt(settings.max_file_size) : 5 * 1024 * 1024)) {
-        toast({
-          title: "❌ File too large",
-description: `Maximum size is ${Math.round((settings.max_file_size ? parseInt(settings.max_file_size) : 5 * 1024 * 1024) / (1024 * 1024))}MB`,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const { content } = await import('../lib/shared/kliv-content.js');
-      const result = await content.uploadFile(file, '/content/chat_files/');
-
-      try {
-const fileApprovalRequired = roomType === 'public' && settings.require_file_approval_public === 'true';
-        if (fileApprovalRequired) {
-          await db.insert("pending_files", {
-            original_filename: file.name,
-            file_path: result.contentUrl,
-            uploaded_by: username,
-            room_id: roomId,
-            device_id: getDeviceId(),
-            file_size: file.size,
-            file_type: file.type,
-          });
-          toast({
-            title: "📤 File uploaded for approval",
-            description: "Your file is pending admin approval",
-          });
-        } else {
-          // Store file directly for immediate display
-          await db.insert("uploaded_files", {
-            filename: result.contentUrl,
-            room_id: roomId,
-            uploaded_by: username,
-          device_id: getDeviceId(),
-            original_name: file.name,
-            file_size: file.size,
-            file_type: file.type
-          });
-          
-          // Also store as message for instant chat display
-          await db.insert("messages", {
-            room_id: roomId,
-            sender_name: username,
-            content: `[FILE: ${file.name}]`,
-            is_ai: 0,
-            device_id: getDeviceId(),
-          });
-          
-          toast({
-            title: "✅ File uploaded successfully",
-            description: `${file.name} is now visible in chat`,
-          });
-          
-          onFileUploaded();
-        }
-      } catch (dbErr) {
-        console.log("Database file insert error:", dbErr);
-        throw dbErr;
-      }
-    } catch (error) {
-      console.error("Error uploading file:", error);
+    // Check if files are allowed
+    if (settings.files_allowed === 'false') {
       toast({
-        title: "❌ Upload failed",
-        description: "Failed to upload file and save to database",
+        title: "Files Disabled",
+        description: "File uploads are currently disabled",
         variant: "destructive",
       });
+      return;
     }
-  };
+
+    // Only allow images and videos
+    if (!isMediaFile(file.type)) {
+      toast({
+        title: "Only Photos & Videos",
+        description: "Only image and video files are allowed for safety",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // File size limit from settings
+    const maxSize = getNum('file_size_limit_mb') * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast({
+        title: "File too large",
+        description: `Max size is ${getNum('file_size_limit_mb')}MB`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsUploading(true);
 

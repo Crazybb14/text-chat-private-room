@@ -258,7 +258,7 @@ const Index = () => {
   if (!usernameSet) {
     return (
       <UsernameSetup 
-        onUsernameSet={async (username) => {
+        onUsernameSet={(username) => {
           console.log("Username setup completed:", username);
           setUsername(username);
           setUsernameSet(true);
@@ -544,7 +544,7 @@ const Index = () => {
                           </div>
                           <DialogTitle className="text-xl">Create Private Room</DialogTitle>
                           <DialogDescription className="text-gray-400">
-                            Give your room a unique name. We'll generate a secret 6-digit code for sharing.
+                            Give your room a unique name. We\'ll generate a secret 6-digit code for sharing.
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 pt-4">
