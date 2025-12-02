@@ -39,6 +39,11 @@ const Index = () => {
   // Crash screen state
   const [isCrashed, setIsCrashed] = useState(false);
   const [crashCountdown, setCrashCountdown] = useState(1);
+  
+  // Downtime state
+  const [isDowntime, setIsDowntime] = useState(false);
+  const [downtimeMessage, setDowntimeMessage] = useState("");
+  const [downtimeEnd, setDowntimeEnd] = useState(0);
 
   // Initialize desktop notifications and check ban status
   useEffect(() => {
@@ -179,6 +184,32 @@ const Index = () => {
     initializeApp();
   }, [toast]);
 
+  // Check for scheduled downtime
+  useEffect(() => {
+    const checkDowntime = async () => {
+      try {
+        const schedules = await db.query("downtime_schedules", { is_active: "eq.true" });
+        const now = Date.now();
+        
+        for (const schedule of schedules) {
+          if (schedule.start_time <= now && schedule.end_time > now) {
+            setIsDowntime(true);
+            setDowntimeMessage(schedule.message || "System is under maintenance");
+            setDowntimeEnd(schedule.end_time);
+            return;
+          }
+        }
+        setIsDowntime(false);
+      } catch (error) {
+        console.log("Error checking downtime:", error);
+      }
+    };
+    
+    checkDowntime();
+    const interval = setInterval(checkDowntime, 10000); // Check every 10 seconds
+    return () => clearInterval(interval);
+  }, []);
+
   // Check for existing username and terms acceptance
   useEffect(() => {
     const checkSetup = async () => {
@@ -205,6 +236,39 @@ const Index = () => {
     
     checkSetup();
   }, [navigate]);
+
+  // Downtime screen
+  if (isDowntime) {
+    const timeRemaining = Math.ceil((downtimeEnd - Date.now()) / 60000); // minutes
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-900 via-gray-900 to-black flex items-center justify-center p-4">
+        <Card className="w-full max-w-2xl glass-morphism border-orange-500/30 shadow-2xl">
+          <CardHeader className="text-center pb-6">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-400 to-red-600 flex items-center justify-center mx-auto mb-6 animate-pulse">
+              <Shield className="w-12 h-12 text-white" />
+            </div>
+            <CardTitle className="text-4xl font-bold text-orange-400 mb-4">
+              🔧 Server Maintenance
+            </CardTitle>
+            <CardDescription className="text-xl text-gray-300">
+              {downtimeMessage}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center space-y-4">
+            <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-6">
+              <p className="text-3xl font-bold text-orange-300 mb-2">
+                {timeRemaining > 0 ? `${timeRemaining} minutes` : "Almost done!"}
+              </p>
+              <p className="text-sm text-gray-400">Estimated time remaining</p>
+            </div>
+            <p className="text-gray-400">
+              We're working hard to improve your experience. Thank you for your patience!
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Crash screen
   if (isCrashed) {

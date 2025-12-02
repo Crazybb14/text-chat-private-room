@@ -57,13 +57,22 @@ const AdminSettings = () => {
 
   const updateSetting = async (key: string, value: string) => {
     setSettings(prev => ({ ...prev, [key]: value }));
-    setHasChanges(true);
   };
 
   const saveSetting = async (key: string, value: string) => {
     try {
-      await db.update('admin_settings', { setting_key: `eq.${key}` }, { setting_value: value });
-      toast({ title: 'Setting saved', description: `${key} updated` });
+      // Check if setting exists, if not insert it
+      const existing = await db.query('admin_settings', { setting_key: `eq.${key}` });
+      if (existing.length > 0) {
+        await db.update('admin_settings', { setting_key: `eq.${key}` }, { setting_value: value });
+      } else {
+        await db.insert('admin_settings', { 
+          setting_key: key, 
+          setting_value: value,
+          setting_type: 'string'
+        });
+      }
+      console.log(`✅ Saved ${key} = ${value}`);
     } catch (error) {
       console.error('Error saving setting:', error);
       toast({ title: 'Error', description: 'Failed to save', variant: 'destructive' });
@@ -1162,9 +1171,11 @@ const AdminSettings = () => {
                 </div>
                 <Switch
                   checked={getBool('scan_images_for_nsfw')}
-                  onCheckedChange={(v) => {
-                    updateSetting('scan_images_for_nsfw', v.toString());
-                    saveSetting('scan_images_for_nsfw', v.toString());
+                  onCheckedChange={async (v) => {
+                    const newValue = v.toString();
+                    updateSetting('scan_images_for_nsfw', newValue);
+                    await saveSetting('scan_images_for_nsfw', newValue);
+                    await loadSettings(); // Reload to confirm
                   }}
                 />
               </div>

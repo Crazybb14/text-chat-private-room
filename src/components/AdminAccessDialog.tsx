@@ -18,10 +18,18 @@ const AdminAccessDialog = ({ open, onClose }: AdminAccessDialogProps) => {
   const hasFaceID = localStorage.getItem('admin_biometric_template');
 
   const handleFaceIDAccess = () => {
-    // Navigate to admin login with face ID preference
-    localStorage.setItem('admin_prefer_biometric', 'true');
-    onClose();
-    navigate('/admin');
+    // Check if already logged in
+    const isAdmin = localStorage.getItem('isAdmin');
+    if (isAdmin === 'true') {
+      // Already logged in, just navigate to panel
+      onClose();
+      navigate('/admin-panel');
+    } else {
+      // Set biometric preference and navigate to login
+      localStorage.setItem('admin_prefer_biometric', 'true');
+      onClose();
+      navigate('/admin');
+    }
   };
 
   const handleCodeAccess = () => {

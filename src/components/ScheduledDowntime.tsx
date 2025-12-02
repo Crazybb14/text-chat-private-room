@@ -24,7 +24,7 @@ const ScheduledDowntime = () => {
   const { toast } = useToast();
   const [isActive, setIsActive] = useState(false);
   const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
+  const [durationHours, setDurationHours] = useState("1");
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState("We're performing scheduled maintenance. We'll be back soon!");
   const [schedules, setSchedules] = useState<DowntimeSchedule[]>([]);
@@ -43,26 +43,27 @@ const ScheduledDowntime = () => {
   };
 
   const handleScheduleDowntime = async () => {
-    if (!startTime || !endTime || !reason) {
+    if (!startTime || !durationHours || !reason) {
       toast({
         title: "Missing Information",
-        description: "Please fill in all required fields",
+        description: "Please fill in start time, duration, and reason",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const hours = parseFloat(durationHours);
+    if (isNaN(hours) || hours <= 0) {
+      toast({
+        title: "Invalid Duration",
+        description: "Please enter a valid number of hours",
         variant: "destructive",
       });
       return;
     }
 
     const start = new Date(startTime).getTime();
-    const end = new Date(endTime).getTime();
-
-    if (end <= start) {
-      toast({
-        title: "Invalid Times",
-        description: "End time must be after start time",
-        variant: "destructive",
-      });
-      return;
-    }
+    const end = start + (hours * 3600 * 1000);
 
     try {
       await db.insert("downtime_schedules", {
@@ -88,7 +89,7 @@ const ScheduledDowntime = () => {
       });
 
       setStartTime("");
-      setEndTime("");
+      setDurationHours("1");
       setReason("");
       setMessage("We're performing scheduled maintenance. We'll be back soon!");
       loadSchedules();
@@ -189,12 +190,15 @@ const ScheduledDowntime = () => {
               />
             </div>
             <div>
-              <Label htmlFor="end">End Time</Label>
+              <Label htmlFor="duration">Duration (Hours)</Label>
               <Input
-                id="end"
-                type="datetime-local"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
+                id="duration"
+                type="number"
+                min="0.5"
+                step="0.5"
+                value={durationHours}
+                onChange={(e) => setDurationHours(e.target.value)}
+                placeholder="e.g., 5"
                 className="bg-secondary/50 border-white/10"
               />
             </div>
