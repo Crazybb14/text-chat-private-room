@@ -37,7 +37,7 @@ const AdminAccessDialog = ({ open, onClose }: AdminAccessDialogProps) => {
   };
 
   const handleCodeSubmit = () => {
-    if (code === "ADMIN2024") {
+    if (code === "QACGT5") {
       localStorage.setItem('isAdmin', 'true');
       localStorage.removeItem('admin_prefer_biometric');
       onClose();

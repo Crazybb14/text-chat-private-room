@@ -294,32 +294,39 @@ const Index = () => {
   // Downtime screen
   if (isDowntime) {
     const timeRemaining = Math.ceil((downtimeEnd - Date.now()) / 60000); // minutes
+    const duration = downtimeEnd - (downtimeEnd - (downtimeEnd - Date.now()));
+    const startTime = new Date(downtimeEnd - duration);
+    const endTime = new Date(downtimeEnd);
+    
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-900 via-gray-900 to-black flex items-center justify-center p-4">
-        <Card className="w-full max-w-2xl glass-morphism border-orange-500/30 shadow-2xl">
-          <CardHeader className="text-center pb-6">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-400 to-red-600 flex items-center justify-center mx-auto mb-6 animate-pulse">
-              <Shield className="w-12 h-12 text-white" />
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="text-center max-w-4xl">
+          <div className="mb-12">
+            <h1 className="text-6xl font-bold text-white mb-6 animate-pulse">
+              DOWNTIME HAS BEEN ENABLED
+            </h1>
+            <div className="text-2xl text-gray-300">
+              From: <span className="text-white font-semibold">{startTime.toLocaleString()}</span>
+              <br />
+              To: <span className="text-white font-semibold">{endTime.toLocaleString()}</span>
             </div>
-            <CardTitle className="text-4xl font-bold text-orange-400 mb-4">
-              🔧 Server Maintenance
-            </CardTitle>
-            <CardDescription className="text-xl text-gray-300">
+          </div>
+          
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-8 mb-8">
+            <div className="text-gray-400 mb-4">
               {downtimeMessage}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center space-y-4">
-            <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-6">
-              <p className="text-3xl font-bold text-orange-300 mb-2">
+            </div>
+            <div className="bg-red-900/30 border border-red-800 rounded-lg p-6">
+              <p className="text-4xl font-bold text-red-400 mb-2">
                 {timeRemaining > 0 ? `${timeRemaining} minutes` : "Almost done!"}
               </p>
               <p className="text-sm text-gray-400">Estimated time remaining</p>
             </div>
-            <p className="text-gray-400">
+            <p className="text-gray-400 mt-6">
               We're working hard to improve your experience. Thank you for your patience!
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
