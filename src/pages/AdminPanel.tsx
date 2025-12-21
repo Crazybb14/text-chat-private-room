@@ -22,6 +22,7 @@ import AdminQuickActions from "@/components/AdminQuickActions";
 import AdminSettings from "@/components/AdminSettings";
 import AdminFileApproval from "@/components/AdminFileApproval";
 import AdminIPLogger from "@/components/AdminIPLogger";
+import function_create from "@/lib/shared/kliv-functions.js";
 import { BiometricAuth } from "@/components/BiometricAuth";
 import ScheduledDowntime from "@/components/ScheduledDowntime";
 import BanManager from "@/components/BanManager";

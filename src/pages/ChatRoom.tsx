@@ -13,6 +13,7 @@ import SharedFile from "@/components/SharedFile";
 import EnhancedFriendRequest from "@/components/EnhancedFriendRequest";
 import { FriendList } from "@/components/FriendList";
 import RealTimeFriendSearch from "@/components/RealTimeFriendSearch";
+import DirectMessage from "@/components/DirectMessage";
 import { getDeviceId } from "@/lib/deviceId";
 import PushNotificationManager from "@/lib/pushNotifications";
 import RealTimePushNotifications from "@/lib/realTimePushNotifications";
@@ -84,6 +85,8 @@ const ChatRoom = () => {
   const [crashCountdown, setCrashCountdown] = useState(1);
   const [adminSettings, setAdminSettings] = useState<Record<string, string>>({});
   const [showFriends, setShowFriends] = useState(false);
+  const [showDirectMessage, setShowDirectMessage] = useState(false);
+  const [directMessageUser, setDirectMessageUser] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -679,34 +682,19 @@ const ChatRoom = () => {
                 message={message}
                 isOwn={message.sender_name === username}
                 currentUsername={username}
+                onSendMessage={(user) => {
+                  setDirectMessageUser(user);
+                  setShowDirectMessage(true);
+                }}
               />
             ))
           )}
           <div ref={messagesEndRef} />
         </div>
       </div>
-
-      {/* Input with file upload */}
+  {/* Input area (file upload removed) */}
       <div className="border-t border-white/10 p-4 relative z-10">
-        {/* Friends button in chat area */}
-        <div className="max-w-3xl mx-auto mb-3">
-          <Button
-            variant="outline"
-            onClick={() => setShowFriends(true)}
-            className="flex items-center gap-2"
-          >
-            <Users className="w-4 h-4" />
-            My Friends
-          </Button>
-        </div>
-        
         <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex gap-3">
-          <FileUpload
-            roomId={parseInt(roomId!)}
-            roomType={room?.type || 'public'}
-            username={username}
-            onFileUploaded={loadMessages}
-          />
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
@@ -724,27 +712,17 @@ const ChatRoom = () => {
         </form>
       </div>
 
-      {/* Friends Dialog */}
-      <Dialog open={showFriends} onOpenChange={setShowFriends}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>My Friends</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-96 overflow-y-auto">
-            <FriendList 
-              onChatWithFriend={(friend) => {
-                toast({
-                  title: "Direct Chat",
-                  description: `Direct messaging with ${friend.username} coming soon!`,
-                });
-                setShowFriends(false);
-              }}
-              showOffline={true}
-              compact={false}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Direct Message Dialog */}
+      {showDirectMessage && (
+        <DirectMessage
+          currentUser={username}
+          recipientUser={directMessageUser}
+          onClose={() => {
+            setShowDirectMessage(false);
+            setDirectMessageUser("");
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -17,6 +17,7 @@ import { getDeviceId } from "@/lib/deviceId";
 import UsernameSetup from "@/components/UsernameSetup";
 import AdminAccessDialog from "@/components/AdminAccessDialog";
 import PrivateRoomAutoCleanup from "@/components/PrivateRoomAutoCleanup";
+import UserSettingsDialog from "@/components/UserSettingsDialog";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -31,6 +32,7 @@ const Index = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
 
   const generateCode = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -575,14 +577,30 @@ const Index = () => {
               ChatRooms
             </h1>
           </div>
-          <Button
-            variant="ghost"
-            onClick={() => setAdminDialogOpen(true)}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <Shield className="w-4 h-4 mr-2" />
-            Admin
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setSettingsDialogOpen(true)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Settings
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setAdminDialogOpen(true)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Shield className="w-4 h-4 mr-2" />
+              Admin
+            </Button>
+          </div>
+          
+          <UserSettingsDialog 
+            open={settingsDialogOpen}
+            onClose={() => setSettingsDialogOpen(false)}
+            username={username}
+          />
           
           <AdminAccessDialog 
             open={adminDialogOpen}
