@@ -32,7 +32,12 @@ const AdminAccessDialog = ({ open, onClose }: AdminAccessDialogProps) => {
 
   const handleBiometricComplete = () => {
     setShowBiometric(false);
-const handleCodeSubmit = () => {
+    localStorage.setItem('isAdmin', 'true');
+    onClose();
+    navigate('/admin-panel');
+  };
+
+  const handleCodeSubmit = () => {
     if (code.toLowerCase() === "qacgt5") {
       localStorage.setItem('isAdmin', 'true');
       onClose();
@@ -42,7 +47,25 @@ const handleCodeSubmit = () => {
       setCode("");
     }
   };
-  };
+
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="bg-card border-white/10 shadow-2xl max-w-md">
+        <DialogHeader>
+          <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center mx-auto mb-4">
+            <Shield className="w-8 h-8 text-white" />
+          </div>
+          <DialogTitle className="text-2xl text-center">Admin Access</DialogTitle>
+          <DialogDescription className="text-center text-gray-400">
+            {accessMethod === "choose" && "Choose your preferred authentication method"}
+            {accessMethod === "face" && "Position your face in the camera to scan"}
+            {accessMethod === "code" && "Enter the admin access code"}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-4">
+          {accessMethod === "choose" && (
+            <>
               {hasFaceID && (
                 <Button
                   onClick={handleFaceIDAccess}
@@ -106,6 +129,16 @@ const handleCodeSubmit = () => {
             </>
           )}
         </div>
+        
+        {/* Biometric Authentication */}
+        {showBiometric && (
+          <WorkingAdminBiometric
+            open={showBiometric}
+            onComplete={handleBiometricComplete}
+            onCancel={() => setShowBiometric(false)}
+            isSetup={isBiometricSetup}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

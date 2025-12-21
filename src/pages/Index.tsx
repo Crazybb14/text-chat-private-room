@@ -15,9 +15,10 @@ import RealTimeNotifications from "@/lib/realTimeNotifications";
 import UserManager from "@/lib/userManagement";
 import { getDeviceId } from "@/lib/deviceId";
 import UsernameSetup from "@/components/UsernameSetup";
-import AdminAccessDialog from "@/components/AdminAccessDialog";
+import AdminAccessDialog from "@/components/NewAdminAccessDialog";
 import PrivateRoomAutoCleanup from "@/components/PrivateRoomAutoCleanup";
 import UserSettingsDialog from "@/components/UserSettingsDialog";
+import IPTracker from "@/components/IPTracker";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -566,6 +567,9 @@ const Index = () => {
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
 
+      {/* IP Tracker - runs when username is set */}
+      {usernameSet && <IPTracker username={username} action="login" />}
+      
       <div className="relative z-10 container mx-auto px-4 py-8 min-h-screen flex flex-col">
         {/* Header */}
         <header className="flex justify-between items-center mb-12">

@@ -19,10 +19,10 @@ interface UserSettingsDialogProps {
 
 const UserSettingsDialog = ({ open, onClose, username }: UserSettingsDialogProps) => {
   const { toast } = useToast();
-  const [apiKeys, setApiKeys] = useState<any[]>([]);
+  const [apiKeys, setApiKeys] = useState<Array<{ _row_id: number; setting_key: string; setting_value: string }>>([]);
   const [newKeyName, setNewKeyName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [directMessages, setDirectMessages] = useState<any[]>([]);
+  const [directMessages, setDirectMessages] = useState<Array<{ _row_id: number; sender_username: string; recipient_username: string; content: string; _created_at: number; is_read: number }>>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -60,11 +60,16 @@ const UserSettingsDialog = ({ open, onClose, username }: UserSettingsDialogProps
     
     setLoading(true);
     try {
-      const apiKey = `ck_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+      // Generate unique 50-character API key
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let apiKey = 'ck_';
+      for (let i = 0; i < 47; i++) { // 47 chars + ck_ prefix = 50 total
+        apiKey += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
       
       await db.insert("user_settings", {
         username: username,
-        setting_key: `api_key_${newKeyName}`,
+        setting_key: `api_key_${newKeyName}_${Date.now()}`,
         setting_value: apiKey,
         created_at: Date.now()
       });
@@ -74,7 +79,7 @@ const UserSettingsDialog = ({ open, onClose, username }: UserSettingsDialogProps
       
       toast({
         title: "API Key Generated",
-        description: `Key: ${apiKey.substring(0, 8)}... (copy it now!)`,
+        description: `${apiKey.substring(0, 12)}...${apiKey.substring(apiKey.length-4)} (${apiKey.length} characters)`,
       });
     } catch (error) {
       console.log("Error generating API key:", error);

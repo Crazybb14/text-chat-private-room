@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { UserPlus, UserMinus, Ban, MessageSquare, User, Copy, Flag } from "lucide-react";
+import { UserPlus, UserMinus, Ban, MessageSquare, User, Copy, Flag, Eye } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { FriendManager } from "@/lib/friendSystem";
 import db from "@/lib/shared/kliv-database.js";
+import EnhancedReportDialog from "@/components/EnhancedReportDialog";
+import ProfileSystem from "@/components/ProfileSystem";
 
 interface UsernameClickMenuProps {
   username: string;
@@ -21,6 +23,8 @@ interface UsernameClickMenuProps {
 const UsernameClickMenu = ({ username, currentUsername, onSendMessage }: UsernameClickMenuProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
 
   const handleAddFriend = async () => {
     if (loading) return;
@@ -98,50 +102,82 @@ const UsernameClickMenu = ({ username, currentUsername, onSendMessage }: Usernam
     }
   };
 
+  const handleViewProfile = () => {
+    setProfileDialogOpen(true);
+  };
+
+  const handleReport = () => {
+    setReportDialogOpen(true);
+  };
+
   const isOwnUsername = username === currentUsername;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <span className="text-blue-400 hover:text-blue-300 cursor-pointer hover:underline transition-colors">
-          {username}
-        </span>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="bg-background border-white/10">
-        {!isOwnUsername && (
-          <>
-            <DropdownMenuItem onClick={handleSendMessage}>
-              <MessageSquare className="w-3 h-3 mr-2" />
-              Message
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleAddFriend} disabled={loading}>
-              <UserPlus className="w-3 h-3 mr-2" />
-              Add Friend
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        )}
-        
-        <DropdownMenuItem onClick={handleCopyUsername}>
-          <Copy className="w-3 h-3 mr-2" />
-          Copy Username
-        </DropdownMenuItem>
-        
-        {!isOwnUsername && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleReportUser} className="text-orange-400">
-              <Flag className="w-3 h-3 mr-2" />
-              Report
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleBlockUser} className="text-destructive">
-              <UserMinus className="w-3 h-3 mr-2" />
-              Block
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <span className="text-blue-400 hover:text-blue-300 cursor-pointer hover:underline transition-colors">
+            {username}
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="bg-background border-white/10">
+          <DropdownMenuItem onClick={handleViewProfile}>
+            <Eye className="w-3 h-3 mr-2" />
+            View Profile
+          </DropdownMenuItem>
+          
+          {!isOwnUsername && (
+            <>
+              <DropdownMenuItem onClick={handleSendMessage}>
+                <MessageSquare className="w-3 h-3 mr-2" />
+                Message
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleAddFriend} disabled={loading}>
+                <UserPlus className="w-3 h-3 mr-2" />
+                Add Friend
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
+          
+          <DropdownMenuItem onClick={handleCopyUsername}>
+            <Copy className="w-3 h-3 mr-2" />
+            Copy Username
+          </DropdownMenuItem>
+          
+          {!isOwnUsername && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleReport} className="text-orange-400">
+                <Flag className="w-3 h-3 mr-2" />
+                Report
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleBlockUser} className="text-destructive">
+                <UserMinus className="w-3 h-3 mr-2" />
+                Block
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Report Dialog */}
+      <EnhancedReportDialog
+        open={reportDialogOpen}
+        onOpenChange={setReportDialogOpen}
+        reportedUsername={username}
+        currentUsername={currentUsername}
+      />
+
+      {/* Profile Dialog */}
+      <ProfileSystem
+        open={profileDialogOpen}
+        onClose={() => setProfileDialogOpen(false)}
+        currentUsername={currentUsername}
+        targetUsername={username}
+        isOwnProfile={false}
+      />
+    </>
   );
 };
 
