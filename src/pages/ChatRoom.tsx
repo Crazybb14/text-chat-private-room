@@ -10,8 +10,9 @@ import MessageBubble from "@/components/MessageBubble";
 import RoomHeader from "@/components/RoomHeader";
 import FileUpload from "@/components/FileUpload";
 import SharedFile from "@/components/SharedFile";
-import { FriendRequestButton } from "@/components/FriendRequestButton";
+import EnhancedFriendRequest from "@/components/EnhancedFriendRequest";
 import { FriendList } from "@/components/FriendList";
+import RealTimeFriendSearch from "@/components/RealTimeFriendSearch";
 import { getDeviceId } from "@/lib/deviceId";
 import PushNotificationManager from "@/lib/pushNotifications";
 import RealTimePushNotifications from "@/lib/realTimePushNotifications";
@@ -633,9 +634,17 @@ const ChatRoom = () => {
       {/* Header */}
       <RoomHeader room={room} onCopyCode={copyRoomCode} onBack={() => navigate("/")} />
 
-      {/* Friends button */}
+      {/* Friends button with search */}
       <div className="absolute top-4 right-4 z-10">
-        <FriendRequestButton onFriendRequestSent={() => {}} />
+        <RealTimeFriendSearch 
+          currentUsername={username}
+          onSelectUser={(selectedUser) => {
+            toast({
+              title: "User selected",
+              description: `Selected ${selectedUser} - friend actions available`
+            });
+          }}
+        />
       </div>
 
       {/* Messages and Files */}
@@ -669,6 +678,7 @@ const ChatRoom = () => {
                 key={message._row_id}
                 message={message}
                 isOwn={message.sender_name === username}
+                currentUsername={username}
               />
             ))
           )}

@@ -26,6 +26,7 @@ import { BiometricAuth } from "@/components/BiometricAuth";
 import ScheduledDowntime from "@/components/ScheduledDowntime";
 import BanManager from "@/components/BanManager";
 import AdminReportsList from "@/components/AdminReportsList";
+import BanWordManager from "@/components/BanWordManager";
 
 interface Room {
   _row_id: number;
@@ -552,6 +553,10 @@ const AdminPanel = () => {
               <Flag className="w-4 h-4 mr-2" />
               Reports
             </TabsTrigger>
+            <TabsTrigger value="banned-words" className="data-[state=active]:bg-red-600">
+              <Ban className="w-4 h-4 mr-2" />
+              Ban Words
+            </TabsTrigger>
             <TabsTrigger value="downtime" className="data-[state=active]:bg-orange-600">
               <AlertTriangle className="w-4 h-4 mr-2" />
               Downtime
@@ -722,6 +727,11 @@ const AdminPanel = () => {
               onBanUser={handleBanUser}
               refreshTrigger={Date.now()}
             />
+          </TabsContent>
+          
+          {/* Banned Words Tab */}
+          <TabsContent value="banned-words">
+            <BanWordManager />
           </TabsContent>
           
           {/* Downtime Tab */}

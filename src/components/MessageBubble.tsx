@@ -1,4 +1,5 @@
 import { Bot } from "lucide-react";
+import UsernameClickMenu from "@/components/UsernameClickMenu";
 
 interface Message {
   _row_id: number;
@@ -12,9 +13,10 @@ interface Message {
 interface MessageBubbleProps {
   message: Message;
   isOwn: boolean;
+  currentUsername: string;
 }
 
-const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
+const MessageBubble = ({ message, isOwn, currentUsername }: MessageBubbleProps) => {
   const isAI = message.is_ai === 1;
   const timestamp = new Date(message._created_at * 1000).toLocaleTimeString([], {
     hour: "2-digit",
@@ -39,9 +41,14 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
           }`}
         >
           {isAI && <Bot className="w-3 h-3 text-purple-400" />}
-          <span className={isAI ? "text-purple-400 font-medium" : ""}>
-            {message.sender_name}
-          </span>
+          {isAI ? (
+            <span className="text-purple-400 font-medium">{message.sender_name}</span>
+          ) : (
+            <UsernameClickMenu 
+              username={message.sender_name}
+              currentUsername={""} // This will be passed from parent
+            />
+          )}
           <span>{timestamp}</span>
         </div>
 

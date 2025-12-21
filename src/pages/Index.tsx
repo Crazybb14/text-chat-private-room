@@ -299,8 +299,17 @@ const Index = () => {
     const endTime = new Date(downtimeEnd);
     
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="text-center max-w-4xl">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4 overflow-hidden">
+        <style>{`
+          body {
+            overflow: hidden;
+          }
+          .no-interact {
+            pointer-events: none;
+          }
+        `}</style>
+        <div className="no-interact absolute inset-0 z-50" />
+        <div className="text-center max-w-4xl z-40">
           <div className="mb-12">
             <h1 className="text-6xl font-bold text-white mb-6 animate-pulse">
               DOWNTIME HAS BEEN ENABLED
