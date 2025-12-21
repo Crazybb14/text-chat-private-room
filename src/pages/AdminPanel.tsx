@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, LogOut, MessageSquare, Ban, Plus, Lightbulb, Scale, Bell, FileText, AlertTriangle, Send, Zap, Settings, Image, MapPin, Camera } from "lucide-react";
+import { Shield, LogOut, MessageSquare, Ban, Plus, Lightbulb, Scale, Bell, FileText, AlertTriangle, Send, Zap, Settings, Image, MapPin, Camera, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,7 @@ import AdminIPLogger from "@/components/AdminIPLogger";
 import { BiometricAuth } from "@/components/BiometricAuth";
 import ScheduledDowntime from "@/components/ScheduledDowntime";
 import BanManager from "@/components/BanManager";
+import AdminReportsList from "@/components/AdminReportsList";
 
 interface Room {
   _row_id: number;
@@ -547,6 +548,10 @@ const AdminPanel = () => {
               <Settings className="w-4 h-4 mr-2" />
               Settings
             </TabsTrigger>
+            <TabsTrigger value="reports" className="data-[state=active]:bg-red-600">
+              <Flag className="w-4 h-4 mr-2" />
+              Reports
+            </TabsTrigger>
             <TabsTrigger value="downtime" className="data-[state=active]:bg-orange-600">
               <AlertTriangle className="w-4 h-4 mr-2" />
               Downtime
@@ -709,6 +714,14 @@ const AdminPanel = () => {
           {/* Settings Tab */}
           <TabsContent value="settings">
             <AdminSettings />
+          </TabsContent>
+          
+          {/* Reports Tab */}
+          <TabsContent value="reports">
+            <AdminReportsList 
+              onBanUser={handleBanUser}
+              refreshTrigger={Date.now()}
+            />
           </TabsContent>
           
           {/* Downtime Tab */}

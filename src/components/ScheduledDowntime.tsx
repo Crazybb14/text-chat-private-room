@@ -516,7 +516,7 @@ const ScheduledDowntime = () => {
                         {schedule.schedule_type && schedule.schedule_type !== "one-time" && (
                           <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30">
                             <Repeat className="w-3 h-3 mr-1" />
-                            {(schedule as any).schedule_type}
+                            {(schedule as DowntimeSchedule).schedule_type}
                           </Badge>
                         )}
                       </div>
@@ -525,26 +525,26 @@ const ScheduledDowntime = () => {
                       </p>
                       
                       {/* Show recurrence details */}
-                      {(schedule as any).schedule_type === "daily" && (
+                      {(schedule as DowntimeSchedule).schedule_type === "daily" && (
                         <div className="text-purple-400 text-sm">
                           <Repeat className="w-3 h-3 inline mr-1" />
-                          Daily until {new Date((schedule as any).recurrence_end).toLocaleDateString()}
+                          Daily until {new Date((schedule as DowntimeSchedule).recurrence_end || 0).toLocaleDateString()}
                         </div>
                       )}
                       
-                      {(schedule as any).schedule_type === "weekly" && (schedule as any).recurrence_days && (
+                      {(schedule as DowntimeSchedule).schedule_type === "weekly" && (schedule as DowntimeSchedule).recurrence_days && (
                         <div className="text-purple-400 text-sm">
                           <Repeat className="w-3 h-3 inline mr-1" />
-                          Weekly on: {(schedule as any).recurrence_days.split(",").map((d: string) => daysOfWeek[parseInt(d)].slice(0, 3)).join(", ")}
+                          Weekly on: {(schedule as DowntimeSchedule).recurrence_days?.split(",").map((d: string) => daysOfWeek[parseInt(d)].slice(0, 3)).join(", ") || ""}
                           <br />
-                          Until: {new Date((schedule as any).recurrence_end).toLocaleDateString()}
+                          Until: {new Date((schedule as DowntimeSchedule).recurrence_end || 0).toLocaleDateString()}
                         </div>
                       )}
                       
-                      {(schedule as any).schedule_type === "custom" && (schedule as any).custom_dates && (
+                      {(schedule as DowntimeSchedule).schedule_type === "custom" && (schedule as DowntimeSchedule).custom_dates && (
                         <div className="text-purple-400 text-sm">
                           <Repeat className="w-3 h-3 inline mr-1" />
-                          Custom dates: {(schedule as any).custom_dates.split(",").length} selected
+                          Custom dates: {(schedule as DowntimeSchedule).custom_dates?.split(",").length || 0} selected
                         </div>
                       )}
                       

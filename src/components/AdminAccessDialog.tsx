@@ -18,18 +18,8 @@ const AdminAccessDialog = ({ open, onClose }: AdminAccessDialogProps) => {
   const hasFaceID = localStorage.getItem('admin_biometric_template');
 
   const handleFaceIDAccess = () => {
-    // Check if already logged in
-    const isAdmin = localStorage.getItem('isAdmin');
-    if (isAdmin === 'true') {
-      // Already logged in, just navigate to panel
-      onClose();
-      navigate('/admin-panel');
-    } else {
-      // Set biometric preference and navigate to login
-      localStorage.setItem('admin_prefer_biometric', 'true');
-      onClose();
-      navigate('/admin');
-    }
+    // Navigate to face scanning dialog
+    setAccessMethod("face");
   };
 
   const handleCodeAccess = () => {
@@ -58,7 +48,7 @@ const AdminAccessDialog = ({ open, onClose }: AdminAccessDialogProps) => {
           <DialogTitle className="text-2xl text-center">Admin Access</DialogTitle>
           <DialogDescription className="text-center text-gray-400">
             {accessMethod === "choose" && "Choose your preferred authentication method"}
-            {accessMethod === "face" && "Scan your face to access admin panel"}
+            {accessMethod === "face" && "Position your face in the camera to scan"}
             {accessMethod === "code" && "Enter the admin access code"}
           </DialogDescription>
         </DialogHeader>

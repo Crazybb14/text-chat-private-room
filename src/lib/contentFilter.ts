@@ -53,7 +53,7 @@ const IP_PATTERN = /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5
 // Profanity list - Only truly offensive words trigger autoban
 // Common words like "gay", "kill", "christian" etc are NOT here - only slurs and explicit profanity
 const PROFANITY_LIST = [
-  // Extreme profanity (autoban)
+  // Extreme profanity (autoban) - REMOVED 'k' to prevent false bans
   'fuck', 'fck', 'fuk', 'fuq', 'f u c k', 'f.u.c.k', 'fvck', 'phuck', 'fukc', 'f-u-c-k',
   'shit', 'sh1t', 'sht', 's h i t', 'sh!t', '$hit', 'shiit', 'shitt',
   'bitch', 'b1tch', 'biatch', 'b!tch', 'bitc h', 'bytch', 'biotch',
@@ -70,8 +70,8 @@ const PROFANITY_LIST = [
   'faggot', 'f4ggot', 'faggo t', 'fagot',
   'tranny', 'shemale', 'she male',
   
-  // Explicit threats (autoban)
-  'kill yourself', 'kill urself', 'killyourself', 'kys',
+  // Explicit threats (autoban) - ONLY actual threats, not single letters
+  'kill yourself', 'kill urself', 'killyourself', 'kys', 'go kill yourself', 'end your life', 'suicide',
   
   // Extremely offensive compounds
   'motherfucker', 'mother fucker', 'muthafucka', 'mofo',
