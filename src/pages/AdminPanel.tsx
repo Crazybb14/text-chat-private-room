@@ -21,7 +21,7 @@ import AdminMessaging from "@/components/AdminMessaging";
 import AdminQuickActions from "@/components/AdminQuickActions";
 import AdminSettings from "@/components/AdminSettings";
 import AdminFileApproval from "@/components/AdminFileApproval";
-import AdminIPLogger from "@/components/AdminIPLogger";
+import EnhancedIPLogger from "@/components/EnhancedIPLogger";
 import function_create from "@/lib/shared/kliv-functions.js";
 import { BiometricAuth } from "@/components/BiometricAuth";
 import ScheduledDowntime from "@/components/ScheduledDowntime";
@@ -712,12 +712,10 @@ const AdminPanel = () => {
             <AdminFileApproval />
           </TabsContent>
           
-          {/* IP Logger Tab */}
+        {/* IP Logger Tab */}
           <TabsContent value="ip-logger">
-            <AdminIPLogger />
+            <EnhancedIPLogger />
           </TabsContent>
-          
-          {/* Settings Tab */}
           <TabsContent value="settings">
             <AdminSettings />
           </TabsContent>
