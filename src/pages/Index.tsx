@@ -184,7 +184,7 @@ const Index = () => {
     initializeApp();
   }, [toast]);
 
-  // Check for scheduled downtime
+  // Check for scheduled downtime - supports recurring schedules
   useEffect(() => {
     const checkDowntime = async () => {
       try {
@@ -192,10 +192,64 @@ const Index = () => {
         const now = Date.now();
         
         for (const schedule of schedules) {
-          if (schedule.start_time <= now && schedule.end_time > now) {
+          let shouldTriggerDowntime = false;
+          let startTime = schedule.start_time;
+          let endTime = schedule.end_time;
+          
+          // Handle recurring schedules
+          if (schedule.schedule_type === "daily") {
+            const scheduledDate = new Date(startTime);
+            const recurrenceEnd = schedule.recurrence_end;
+            
+            // Check all days until recurrence end
+            for (let d = new Date(scheduledDate); d.getTime() <= recurrenceEnd; d.setDate(d.getDate() + 1)) {
+              const dayStart = new Date(d);
+              dayStart.setHours(scheduledDate.getHours(), scheduledDate.getMinutes(), 0, 0);
+              const dayEnd = new Date(dayStart.getTime() + (endTime - startTime));
+              
+              if (dayStart.getTime() <= now && dayEnd.getTime() > now) {
+                shouldTriggerDowntime = true;
+                startTime = dayStart.getTime();
+                endTime = dayEnd.getTime();
+                break;
+              }
+            }
+          } else if (schedule.schedule_type === "weekly") {
+            const scheduledDate = new Date(startTime);
+            const recurrenceEnd = schedule.recurrence_end || now + (365 * 24 * 60 * 60 * 1000); // Default to 1 year
+            const selectedDays = schedule.recurrence_days ? schedule.recurrence_days.split(",") : [];
+            
+            // Check each occurrence until recurrence end
+            for (let weekStart = new Date(scheduledDate); weekStart.getTime() <= recurrenceEnd; weekStart.setDate(weekStart.getDate() + 7)) {
+              for (const dayStr of selectedDays) {
+                const dayIndex = parseInt(dayStr);
+                const currentDate = new Date(weekStart);
+                currentDate.setDate(currentDate.getDate() + dayIndex - weekStart.getDay());
+                
+                const dayStart = new Date(currentDate);
+                dayStart.setHours(scheduledDate.getHours(), scheduledDate.getMinutes(), 0, 0);
+                const dayEnd = new Date(dayStart.getTime() + (endTime - startTime));
+                
+                if (dayStart.getTime() <= now && dayEnd.getTime() > now) {
+                  shouldTriggerDowntime = true;
+                  startTime = dayStart.getTime();
+                  endTime = dayEnd.getTime();
+                  break;
+                }
+              }
+              if (shouldTriggerDowntime) break;
+            }
+          } else if (schedule.schedule_type === "one-time") {
+            // Original logic for one-time schedules
+            if (startTime <= now && endTime > now) {
+              shouldTriggerDowntime = true;
+            }
+          }
+          
+          if (shouldTriggerDowntime) {
             setIsDowntime(true);
             setDowntimeMessage(schedule.message || "System is under maintenance");
-            setDowntimeEnd(schedule.end_time);
+            setDowntimeEnd(endTime);
             return;
           }
         }

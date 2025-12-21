@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Power, Calendar, AlertTriangle } from "lucide-react";
+import { Clock, Power, Calendar, AlertTriangle, Repeat } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 
@@ -18,6 +20,10 @@ interface DowntimeSchedule {
   end_time: number;
   reason: string;
   message: string;
+  schedule_type?: string;
+  recurrence_days?: string;
+  recurrence_end?: number;
+  custom_dates?: string;
 }
 
 const ScheduledDowntime = () => {
@@ -28,6 +34,12 @@ const ScheduledDowntime = () => {
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState("We're performing scheduled maintenance. We'll be back soon!");
   const [schedules, setSchedules] = useState<DowntimeSchedule[]>([]);
+  const [recurrenceType, setRecurrenceType] = useState<"one-time" | "daily" | "weekly" | "custom">("one-time");
+  const [customDates, setCustomDates] = useState<string[]>([]);
+  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const [endDate, setEndDate] = useState<string>("");
+
+  const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   
   useEffect(() => {
     loadSchedules();
@@ -62,36 +74,57 @@ const ScheduledDowntime = () => {
       return;
     }
 
+    // Validate recurrence settings
+    if (recurrenceType === "weekly" && selectedDays.length === 0) {
+      toast({
+        title: "Missing Days",
+        description: "Please select at least one day for weekly recurrence",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if ((recurrenceType === "daily" || recurrenceType === "weekly") && !endDate) {
+      toast({
+        title: "Missing End Date",
+        description: "Please specify when the recurrence should end",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const start = new Date(startTime).getTime();
     const end = start + (hours * 3600 * 1000);
 
     try {
-      await db.insert("downtime_schedules", {
+      const scheduleData = {
         is_active: true,
         start_time: start,
         end_time: end,
         reason,
         message,
-      });
+        schedule_type: recurrenceType,
+        recurrence_days: selectedDays.join(","),
+        recurrence_end: endDate ? new Date(endDate).getTime() : null,
+        custom_dates: customDates.join(",")
+      };
 
-      // Store in localStorage for immediate access
-      localStorage.setItem('scheduled_downtime', JSON.stringify({
-        isActive: true,
-        startTime: start,
-        endTime: end,
-        reason,
-        message,
-      }));
+      await db.insert("downtime_schedules", scheduleData);
 
       toast({
         title: "Downtime Scheduled",
-        description: `Downtime from ${new Date(start).toLocaleString()} to ${new Date(end).toLocaleString()}`,
+        description: `Maintenance scheduled with ${recurrenceType} recurrence`,
       });
-
+      
+      // Reset form
       setStartTime("");
       setDurationHours("1");
       setReason("");
       setMessage("We're performing scheduled maintenance. We'll be back soon!");
+      setRecurrenceType("one-time");
+      setSelectedDays([]);
+      setEndDate("");
+      setCustomDates([]);
       loadSchedules();
     } catch (error) {
       console.error("Error scheduling downtime:", error);
@@ -204,6 +237,106 @@ const ScheduledDowntime = () => {
             </div>
           </div>
 
+          {/* Recurrence Settings */}
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="recurrence">Recurrence Type</Label>
+              <Select value={recurrenceType} onValueChange={(value: "one-time" | "daily" | "weekly" | "custom") => setRecurrenceType(value)}>
+                <SelectTrigger className="bg-secondary/50 border-white/10">
+                  <SelectValue placeholder="Select recurrence type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="one-time">One Time Only</SelectItem>
+                  <SelectItem value="daily">Every Day</SelectItem>
+                  <SelectItem value="weekly">On Specific Days</SelectItem>
+                  <SelectItem value="custom">Custom Dates</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Daily Recurrence Settings */}
+            {recurrenceType === "daily" && (
+              <div className="space-y-2">
+                <Label htmlFor="endDate">Repeat Until</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="bg-secondary/50 border-white/10"
+                />
+                <p className="text-sm text-gray-400">Maintenance will occur every day at the specified time until this date</p>
+              </div>
+            )}
+
+            {/* Weekly Recurrence Settings */}
+            {recurrenceType === "weekly" && (
+              <div className="space-y-4">
+                <div>
+                  <Label>Repeat On These Days</Label>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => (
+                      <div key={day} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={day}
+                          checked={selectedDays.includes((index).toString())}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedDays([...selectedDays, index.toString()]);
+                            } else {
+                              setSelectedDays(selectedDays.filter(d => d !== index.toString()));
+                            }
+                          }}
+                        />
+                        <Label htmlFor={day} className="text-sm">{day}</Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="weeklyEndDate">Repeat Until</Label>
+                  <Input
+                    id="weeklyEndDate"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="bg-secondary/50 border-white/10"
+                  />
+                </div>
+                <p className="text-sm text-gray-400">Maintenance will occur on selected days at the specified time</p>
+              </div>
+            )}
+
+            {/* Custom Dates Settings */}
+            {recurrenceType === "custom" && (
+              <div className="space-y-2">
+                <Label htmlFor="customDates">Select Specific Dates</Label>
+                <Input
+                  id="customDates"
+                  type="date"
+                  multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    setCustomDates(files.map(f => f.name));
+                  }}
+                  className="bg-secondary/50 border-white/10"
+                />
+                <p className="text-sm text-gray-400">Hold Ctrl/Cmd to select multiple dates</p>
+                {customDates.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {customDates.map((date, index) => (
+                      <Badge key={index} variant="secondary">
+                        {date}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div>
             <Label htmlFor="reason">Reason (Internal)</Label>
             <Input
@@ -244,6 +377,109 @@ const ScheduledDowntime = () => {
               Activate Now (1hr)
             </Button>
           </div>
+
+          {/* Recurrence Settings */}
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="recurrence">Recurrence Type</Label>
+              <Select value={recurrenceType} onValueChange={(value: "one-time" | "daily" | "weekly" | "custom") => setRecurrenceType(value)}>
+                <SelectTrigger className="bg-secondary/50 border-white/10">
+                  <SelectValue placeholder="Select recurrence type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="one-time">One Time Only</SelectItem>
+                  <SelectItem value="daily">Every Day</SelectItem>
+                  <SelectItem value="weekly">On Specific Days</SelectItem>
+                  <SelectItem value="custom">Custom Dates</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Daily Recurrence Settings */}
+            {recurrenceType === "daily" && (
+              <div className="space-y-2">
+                <Label htmlFor="endDate">Repeat Until</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="bg-secondary/50 border-white/10"
+                />
+                <p className="text-sm text-gray-400">Maintenance will occur every day at the specified time until this date</p>
+              </div>
+            )}
+
+            {/* Weekly Recurrence Settings */}
+            {recurrenceType === "weekly" && (
+              <div className="space-y-4">
+                <div>
+                  <Label>Repeat On These Days</Label>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => (
+                      <div key={day} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={day}
+                          checked={selectedDays.includes(index.toString())}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedDays([...selectedDays, index.toString()]);
+                            } else {
+                              setSelectedDays(selectedDays.filter(d => d !== index.toString()));
+                            }
+                          }}
+                        />
+                        <Label htmlFor={day} className="text-sm">{day}</Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="weeklyEndDate">Repeat Until</Label>
+                  <Input
+                    id="weeklyEndDate"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="bg-secondary/50 border-white/10"
+                  />
+                </div>
+                <p className="text-sm text-gray-400">Maintenance will occur on selected days at the specified time</p>
+              </div>
+            )}
+
+            {/* Custom Dates Settings */}
+            {recurrenceType === "custom" && (
+              <div className="space-y-2">
+                <Label htmlFor="customDates">Select Specific Dates</Label>
+                <Input
+                  id="customDates"
+                  type="date"
+                  multiple
+                  onChange={(e) => {
+                    const input = e.target as HTMLInputElement;
+                    if (input.files) {
+                      const dates = Array.from(input.files).map(f => new Date(f.name || input.value).toLocaleDateString());
+                      setCustomDates(dates);
+                    }
+                  }}
+                  className="bg-secondary/50 border-white/10"
+                />
+                <p className="text-sm text-gray-400">Hold Ctrl/Cmd to select multiple dates</p>
+                {customDates.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {customDates.map((date, index) => (
+                      <Badge key={index} variant="secondary">
+                        {date}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -277,10 +513,41 @@ const ScheduledDowntime = () => {
                         )}
                         {isFuture && <Badge variant="secondary">Scheduled</Badge>}
                         {isPast && <Badge variant="outline">Completed</Badge>}
+                        {schedule.schedule_type && schedule.schedule_type !== "one-time" && (
+                          <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30">
+                            <Repeat className="w-3 h-3 mr-1" />
+                            {(schedule as any).schedule_type}
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {new Date(schedule.start_time).toLocaleString()} → {new Date(schedule.end_time).toLocaleString()}
                       </p>
+                      
+                      {/* Show recurrence details */}
+                      {(schedule as any).schedule_type === "daily" && (
+                        <div className="text-purple-400 text-sm">
+                          <Repeat className="w-3 h-3 inline mr-1" />
+                          Daily until {new Date((schedule as any).recurrence_end).toLocaleDateString()}
+                        </div>
+                      )}
+                      
+                      {(schedule as any).schedule_type === "weekly" && (schedule as any).recurrence_days && (
+                        <div className="text-purple-400 text-sm">
+                          <Repeat className="w-3 h-3 inline mr-1" />
+                          Weekly on: {(schedule as any).recurrence_days.split(",").map((d: string) => daysOfWeek[parseInt(d)].slice(0, 3)).join(", ")}
+                          <br />
+                          Until: {new Date((schedule as any).recurrence_end).toLocaleDateString()}
+                        </div>
+                      )}
+                      
+                      {(schedule as any).schedule_type === "custom" && (schedule as any).custom_dates && (
+                        <div className="text-purple-400 text-sm">
+                          <Repeat className="w-3 h-3 inline mr-1" />
+                          Custom dates: {(schedule as any).custom_dates.split(",").length} selected
+                        </div>
+                      )}
+                      
                       <p className="text-xs text-muted-foreground mt-1">{schedule.message}</p>
                     </div>
                     {schedule.is_active && !isPast && (
