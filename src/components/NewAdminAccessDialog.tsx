@@ -32,18 +32,15 @@ const handleCodeAccess = () => {
 
   const handleBiometricComplete = () => {
     setShowBiometric(false);
-    localStorage.setItem('isAdmin', 'true');
-    onClose();
-    // Navigate to correct admin panel route
-    navigate('/admin-panel');
+// Navigate to correct admin panel route
+    navigate('/panel');
   };
 
   const handleCodeSubmit = () => {
     if (code.toLowerCase() === "qacgt5") {
       localStorage.setItem('isAdmin', 'true');
       onClose();
-      navigate('/admin-panel');
-    } else {
+    navigate('/panel');
       alert("Incorrect code");
       setCode("");
     }
