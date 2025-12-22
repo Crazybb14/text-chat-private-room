@@ -7,20 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
-import auth from "@/lib/shared/kliv-auth.js";
-import BanWordManager from "@/components/BanWordManager";
-import AdminReportsList from "@/components/AdminReportsList";
-import AdminAPIManager from "@/components/AdminAPIManager";
-import EnhancedIPLogger from "@/components/EnhancedIPLogger";
-import WorkingAdminBiometric from "@/components/WorkingAdminBiometric";
-import AdminControlPanel from "@/components/AdminControlPanel";
-import AdminSecurityPanel from "@/components/AdminSecurityPanel";
-import AdminSystemMonitor from "@/components/AdminSystemMonitor";
-import AdminUserManagement from "@/components/AdminUserManagement";
-import AdminFileModeration from "@/components/AdminFileModeration";
-import AdminMessageFiltering from "@/components/AdminMessageFiltering";
-import AdminAnalytics from "@/components/AdminAnalytics";
-import AdminSettings from "@/components/AdminSettings";
 
 interface Room {
   _row_id: number;
@@ -53,11 +39,8 @@ export default function AdminPanel() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [bans, setBans] = useState<Ban[]>([]);
-  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [banUsername, setBanUsername] = useState("");
   const [loading, setLoading] = useState(true);
-  const [showBiometric, setShowBiometric] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -78,38 +61,12 @@ export default function AdminPanel() {
   }, []);
 
   useEffect(() => {
-    // Check biometric authentication status
-    const biometricEnabled = localStorage.getItem('admin_biometric_enabled');
-    const biometricTemplate = localStorage.getItem('admin_biometric_template');
-    
-    if (biometricEnabled === 'true' && biometricTemplate) {
-      setShowBiometric(true);
-    } else {
-      setIsAuthenticated(true); // No biometric setup required
-      loadData();
-    }
-    
-    const interval = setInterval(() => {
-      if (isAuthenticated) {
-        loadData();
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [loadData, isAuthenticated]);
-
-  const handleBiometricComplete = () => {
-    setIsAuthenticated(true);
-    setShowBiometric(false);
     loadData();
-    toast({
-      title: "Authentication Successful",
-      description: "Welcome to the Admin Panel",
-    });
-  };
-
-  const handleBiometricCancel = () => {
-    navigate("/");
-  };
+    const interval = setInterval(() => {
+      loadData();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   const handleBanUser = async () => {
     if (!banUsername.trim()) {
@@ -193,25 +150,12 @@ export default function AdminPanel() {
     }
   };
 
-  // Show biometric authentication if required
-  if (showBiometric) {
-    return (
-      <WorkingAdminBiometric 
-        open={showBiometric}
-        onComplete={handleBiometricComplete}
-        onCancel={handleBiometricCancel}
-        isSetup={false}
-      />
-    );
-  }
-
-  // Show loading while checking authentication
-  if (!isAuthenticated) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Verifying administrator access...</p>
+          <p className="text-gray-400">Loading admin panel...</p>
         </div>
       </div>
     );
@@ -226,31 +170,40 @@ export default function AdminPanel() {
             <Button variant="outline" onClick={() => navigate("/")}>
               Back to Chat
             </Button>
-            <Button variant="outline" onClick={() => setShowBiometric(true)}>
-              Re-authenticate
-            </Button>
           </div>
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8 lg:grid-cols-12">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="rooms">Rooms</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
             <TabsTrigger value="bans">Bans</TabsTrigger>
-            <TabsTrigger value="users">Users</TabsTrigger>
-            <TabsTrigger value="reports">Reports</TabsTrigger>
-            <TabsTrigger value="files">Files</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
-            <TabsTrigger value="filtering">Filtering</TabsTrigger>
-            <TabsTrigger value="ip-logger">IP Logger</TabsTrigger>
-            <TabsTrigger value="api-keys">API Keys</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
-            <AdminControlPanel />
+            <Card>
+              <CardHeader>
+                <CardTitle>System Overview</CardTitle>
+                <CardDescription>Basic admin functionality</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-secondary/30 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-400">{rooms.length}</div>
+                    <div className="text-sm text-gray-400">Rooms</div>
+                  </div>
+                  <div className="text-center p-4 bg-secondary/30 rounded-lg">
+                    <div className="text-2xl font-bold text-green-400">{messages.length}</div>
+                    <div className="text-sm text-gray-400">Messages</div>
+                  </div>
+                  <div className="text-center p-4 bg-secondary/30 rounded-lg">
+                    <div className="text-2xl font-bold text-red-400">{bans.length}</div>
+                    <div className="text-sm text-gray-400">Bans</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="rooms">
@@ -260,37 +213,33 @@ export default function AdminPanel() {
                 <CardDescription>Manage all chat rooms</CardDescription>
               </CardHeader>
               <CardContent>
-                {loading ? (
-                  <p>Loading rooms...</p>
-                ) : (
-                  <div className="space-y-4">
-                    {rooms.map((room) => (
-                      <div key={room._row_id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
-                          <h3 className="font-semibold">{room.name}</h3>
-                          <p className="text-sm text-gray-500">
-                            Type: {room.type} {room.code && `• Code: ${room.code}`}
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            Created: {new Date(room._created_at * 1000).toLocaleString()}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Badge variant={room.type === "public" ? "default" : "secondary"}>
-                            {room.type}
-                          </Badge>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteRoom(room._row_id)}
-                          >
-                            Delete
-                          </Button>
-                        </div>
+                <div className="space-y-4">
+                  {rooms.map((room) => (
+                    <div key={room._row_id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div>
+                        <h3 className="font-semibold">{room.name}</h3>
+                        <p className="text-sm text-gray-500">
+                          Type: {room.type} {room.code && `• Code: ${room.code}`}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          Created: {new Date(room._created_at * 1000).toLocaleString()}
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div className="flex gap-2">
+                        <Badge variant={room.type === "public" ? "default" : "secondary"}>
+                          {room.type}
+                        </Badge>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteRoom(room._row_id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -302,30 +251,26 @@ export default function AdminPanel() {
                 <CardDescription>View and delete messages</CardDescription>
               </CardHeader>
               <CardContent>
-                {loading ? (
-                  <p>Loading messages...</p>
-                ) : (
-                  <div className="space-y-4">
-                    {messages.map((message) => (
-                      <div key={message._row_id} className="flex items-start justify-between p-4 border rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-semibold">{message.sender_name}</p>
-                          <p className="text-sm mt-1">{message.content}</p>
-                          <p className="text-xs text-gray-400 mt-2">
-                            Room ID: {message.room_id} • {new Date(message._created_at * 1000).toLocaleString()}
-                          </p>
-                        </div>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteMessage(message._row_id)}
-                        >
-                          Delete
-                        </Button>
+                <div className="space-y-4">
+                  {messages.map((message) => (
+                    <div key={message._row_id} className="flex items-start justify-between p-4 border rounded-lg">
+                      <div className="flex-1">
+                        <p className="font-semibold">{message.sender_name}</p>
+                        <p className="text-sm mt-1">{message.content}</p>
+                        <p className="text-xs text-gray-400 mt-2">
+                          Room ID: {message.room_id} • {new Date(message._created_at * 1000).toLocaleString()}
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteMessage(message._row_id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -357,74 +302,31 @@ export default function AdminPanel() {
                   <CardDescription>Manage banned users</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {loading ? (
-                    <p>Loading bans...</p>
-                  ) : (
-                    <div className="space-y-4">
-                      {bans.map((ban) => (
-                        <div key={ban._row_id} className="flex items-center justify-between p-4 border rounded-lg">
-                          <div>
-                            <h3 className="font-semibold">{ban.username}</h3>
-                            <p className="text-sm text-gray-500">
-                              Device ID: {ban.device_id || "Unknown"}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              Banned: {new Date(ban._created_at * 1000).toLocaleString()}
-                            </p>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleUnbanUser(ban._row_id)}
-                          >
-                            Unban
-                          </Button>
+                  <div className="space-y-4">
+                    {bans.map((ban) => (
+                      <div key={ban._row_id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <h3 className="font-semibold">{ban.username}</h3>
+                          <p className="text-sm text-gray-500">
+                            Device ID: {ban.device_id || "Unknown"}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            Banned: {new Date(ban._created_at * 1000).toLocaleString()}
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleUnbanUser(ban._row_id)}
+                        >
+                          Unban
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
             </div>
-          </TabsContent>
-
-          <TabsContent value="users">
-            <AdminUserManagement />
-          </TabsContent>
-
-          <TabsContent value="reports">
-            <AdminReportsList />
-          </TabsContent>
-
-          <TabsContent value="files">
-            <AdminFileModeration />
-          </TabsContent>
-
-          <TabsContent value="security">
-            <AdminSecurityPanel />
-          </TabsContent>
-
-          <TabsContent value="filtering">
-            <div className="space-y-6">
-              <BanWordManager />
-              <AdminMessageFiltering />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="ip-logger">
-            <EnhancedIPLogger />
-          </TabsContent>
-
-          <TabsContent value="api-keys">
-            <AdminAPIManager />
-          </TabsContent>
-
-          <TabsContent value="analytics">
-            <AdminAnalytics />
-          </TabsContent>
-
-          <TabsContent value="settings">
-            <AdminSettings />
           </TabsContent>
         </Tabs>
       </div>

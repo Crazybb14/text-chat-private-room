@@ -150,7 +150,7 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
       // Store securely
       localStorage.setItem('admin_biometric_template', JSON.stringify(biometricTemplate));
       localStorage.setItem('admin_biometric_enabled', 'true');
-      localStorage.setItem('admin_verification_codes', JSON.stringify(['ADMIN123', 'SECURE789', 'VERIFY456']));
+      localStorage.setItem('admin_verification_codes', JSON.stringify(['qacgt5']));
       
       setStage('success');
       setTimeout(() => {
@@ -226,7 +226,7 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
     try {
       // Check against stored admin codes (in production, this would be server-side verification)
       const storedCodes = localStorage.getItem('admin_verification_codes');
-      const validCodes = storedCodes ? JSON.parse(storedCodes) : ['ADMIN123', 'SECURE789', 'VERIFY456'];
+      const validCodes = storedCodes ? JSON.parse(storedCodes) : ['qacgt5'];
       
       if (validCodes.includes(adminCode.toUpperCase().trim())) {
         // Store verification time and code
@@ -409,7 +409,7 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
               <div className="space-y-2">
                 <Input
                   type="password"
-                  placeholder="Enter admin code (e.g., ADMIN123)"
+                  placeholder="Enter admin code"
                   value={adminCode}
                   onChange={(e) => setAdminCode(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && verifyAdminCode()}
@@ -428,7 +428,7 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
               </div>
 
               <p className="text-xs text-gray-500">
-                Default codes: ADMIN123, SECURE789, VERIFY456
+                Contact administrator for code access
               </p>
             </div>
           </div>
