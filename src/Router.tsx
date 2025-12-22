@@ -18,6 +18,10 @@ const router = createBrowserRouter([
     path: "/chat/:roomId",
     element: <ChatRoom />,
   },
+{
+    path: "/panel",
+    element: <AdminPanel />,
+  },
   {
     path: "/admin-panel",
     element: <AdminPanel />,

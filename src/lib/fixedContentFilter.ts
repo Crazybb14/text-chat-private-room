@@ -16,16 +16,20 @@ const getBannedWords = async () => {
     let permanentWords: string[] = [];
     let customWords: string[] = [];
     
-    if (bannedSettings.length > 0) {
+if (bannedSettings.length > 0) {
       try {
         permanentWords = JSON.parse(bannedSettings[0].setting_value || "[]");
-      } catch {}
+      } catch (e) {
+        console.log("Failed to parse permanent words:", e);
+      }
     }
     
     if (customSettings.length > 0) {
       try {
         customWords = JSON.parse(customSettings[0].setting_value || "[]");
-      } catch {}
+      } catch (e) {
+        console.log("Failed to parse custom words:", e);
+      }
     }
     
     // Hardcoded extremely offensive words that should always trigger autoban

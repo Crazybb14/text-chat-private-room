@@ -709,37 +709,54 @@ export function filterContent(content: string, settings: Partial<FilterSettings>
     }
   }
   
-  // Check profanity - STRICT MODE (any profanity = ban)
+// Check profanity - STRICT MODE (any profanity = ban) but with false positive protection
   if (settings.profanity_filter !== false) {
     const lowerContent = content.toLowerCase().replace(/[^a-z0-9\s]/g, ''); // Remove special chars for matching
     const originalLower = content.toLowerCase();
     
+    // Additional check: don't ban single letters or very short words
+    const words = lowerContent.split(/\s+/).filter(w => w.length > 2); // Only check words longer than 2 characters
+    
     for (const word of PROFANITY_LIST) {
-      // Check normal match
-      const regex = new RegExp(`\\b${word.replace(/\s+/g, '\\s*')}\\b`, 'gi');
-      // Also check for spaced out letters: f u c k
-      const spacedRegex = new RegExp(word.split('').join('\\s*'), 'gi');
+      // Skip single letter profanity entries to prevent false bans
+      if (word.length <= 2) continue;
       
-      if (regex.test(originalLower) || spacedRegex.test(lowerContent)) {
-        reasons.push(`🚫 BANNED WORD: "${word}"`);
-        threatScore += 100; // High score = instant block
-        hasProfanity = true;
-        filteredContent = filteredContent.replace(regex, '***BLOCKED***');
-        filteredContent = filteredContent.replace(spacedRegex, '***BLOCKED***');
+      // Check normal match - only in words that are actually present
+      const regex = new RegExp(`\\b${word.replace(/\s+/g, '\\s*')}\\b`, 'gi');
+      // Also check for spaced out letters: f u c k - but only if the spaced version is longer than 2 chars
+      const spacedRegex = word.length > 3 ? new RegExp(word.split('').join('\\s*'), 'gi') : null;
+      
+      if (regex.test(originalLower) || (spacedRegex && spacedRegex.test(lowerContent))) {
+        // Ensure we're actually matching the word, not just parts of other words
+        const actualMatches = originalLower.match(regex);
+        if (actualMatches && actualMatches.length > 0) {
+          reasons.push(`🚫 BANNED WORD: "${word}"`);
+          threatScore += 100; // High score = instant block
+          hasProfanity = true;
+          filteredContent = filteredContent.replace(regex, '***BLOCKED***');
+          if (spacedRegex) {
+            filteredContent = filteredContent.replace(spacedRegex, '***BLOCKED***');
+          }
+        }
+      }
+    }
+}
+  
+  // Check spam and flooding
+  if (settings.block_personal_info !== false) {
+    for (const pattern of SPAM_PATTERNS) {
+      const matches = content.match(pattern);
+      if (matches && matches.length > 0) {
+        reasons.push(`Spam/flooding detected`);
+        threatScore += 40;
+        filteredContent = filteredContent.replace(pattern, '[SPAM BLOCKED]');
+        break;
       }
     }
   }
-  
-  // Check spam patterns
-  for (const pattern of SPAM_PATTERNS) {
-    if (pattern.test(content)) {
-      reasons.push(`Spam pattern detected`);
-      threatScore += 20;
-    }
-  }
-  
+
   return {
-    blocked: threatScore >= 50 || reasons.some(r => r.includes('CRITICAL')) || hasProfanity,
+    blocked: threatScore >= 80,
     reasons,
     threatScore,
     filteredContent,

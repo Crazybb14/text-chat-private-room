@@ -10,6 +10,7 @@ import { Settings, User, Key, Shield, Copy, RefreshCw, Trash2, Users, MessageSqu
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import auth from "@/lib/shared/kliv-auth.js";
+import ProfilePictureUpload from "@/components/ProfilePictureUpload";
 
 interface UserSettingsDialogProps {
   open: boolean;
@@ -190,7 +191,8 @@ const generateApiKey = async () => {
                     Your basic profile information and settings
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+<CardContent className="space-y-4">
+                  <ProfilePictureUpload username={username} />
                   <div>
                     <label className="text-sm font-medium text-gray-400">Username</label>
                     <Input value={username} disabled className="bg-secondary/50 border-white/10" />
@@ -208,7 +210,6 @@ const generateApiKey = async () => {
                 </CardContent>
               </Card>
             </TabsContent>
-
             {/* API Keys Tab */}
             <TabsContent value="api">
               <Card className="glass-morphism border-white/10">

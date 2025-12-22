@@ -8,6 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import auth from "@/lib/shared/kliv-auth.js";
+import BanWordManager from "@/components/BanWordManager";
+import AdminReportsList from "@/components/AdminReportsList";
+import AdminAPIManager from "@/components/AdminAPIManager";
+import EnhancedIPLogger from "@/components/EnhancedIPLogger";
+import WorkingAdminBiometric from "@/components/WorkingAdminBiometric";
 
 interface Room {
   _row_id: number;
@@ -162,10 +167,15 @@ export default function AdminPanel() {
         </div>
 
         <Tabs defaultValue="rooms" className="space-y-6">
-          <TabsList>
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="rooms">Rooms</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
             <TabsTrigger value="bans">Bans</TabsTrigger>
+            <TabsTrigger value="ban-words">Ban Words</TabsTrigger>
+            <TabsTrigger value="reports">Reports</TabsTrigger>
+            <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+            <TabsTrigger value="ip-logger">IP Logger</TabsTrigger>
+            <TabsTrigger value="biometric">Biometric</TabsTrigger>
           </TabsList>
 
           <TabsContent value="rooms">
@@ -301,6 +311,39 @@ export default function AdminPanel() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="ban-words">
+            <BanWordManager />
+          </TabsContent>
+
+          <TabsContent value="reports">
+            <AdminReportsList />
+          </TabsContent>
+
+          <TabsContent value="api-keys">
+            <AdminAPIManager />
+          </TabsContent>
+
+          <TabsContent value="ip-logger">
+            <EnhancedIPLogger />
+          </TabsContent>
+
+          <TabsContent value="biometric">
+            <Card>
+              <CardHeader>
+                <CardTitle>Biometric Authentication</CardTitle>
+                <CardDescription>Set up Face ID for admin access</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <WorkingAdminBiometric 
+                  open={true}
+                  onComplete={() => {}}
+                  onCancel={() => {}}
+                  isSetup={true}
+                />
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
