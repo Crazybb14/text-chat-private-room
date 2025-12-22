@@ -13,6 +13,14 @@ import AdminReportsList from "@/components/AdminReportsList";
 import AdminAPIManager from "@/components/AdminAPIManager";
 import EnhancedIPLogger from "@/components/EnhancedIPLogger";
 import WorkingAdminBiometric from "@/components/WorkingAdminBiometric";
+import AdminControlPanel from "@/components/AdminControlPanel";
+import AdminSecurityPanel from "@/components/AdminSecurityPanel";
+import AdminSystemMonitor from "@/components/AdminSystemMonitor";
+import AdminUserManagement from "@/components/AdminUserManagement";
+import AdminFileModeration from "@/components/AdminFileModeration";
+import AdminMessageFiltering from "@/components/AdminMessageFiltering";
+import AdminAnalytics from "@/components/AdminAnalytics";
+import AdminSettings from "@/components/AdminSettings";
 
 interface Room {
   _row_id: number;
@@ -48,6 +56,8 @@ export default function AdminPanel() {
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [banUsername, setBanUsername] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showBiometric, setShowBiometric] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -68,11 +78,38 @@ export default function AdminPanel() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    // Check biometric authentication status
+    const biometricEnabled = localStorage.getItem('admin_biometric_enabled');
+    const biometricTemplate = localStorage.getItem('admin_biometric_template');
     
-    const interval = setInterval(loadData, 5000);
+    if (biometricEnabled === 'true' && biometricTemplate) {
+      setShowBiometric(true);
+    } else {
+      setIsAuthenticated(true); // No biometric setup required
+      loadData();
+    }
+    
+    const interval = setInterval(() => {
+      if (isAuthenticated) {
+        loadData();
+      }
+    }, 5000);
     return () => clearInterval(interval);
-  }, [loadData]);
+  }, [loadData, isAuthenticated]);
+
+  const handleBiometricComplete = () => {
+    setIsAuthenticated(true);
+    setShowBiometric(false);
+    loadData();
+    toast({
+      title: "Authentication Successful",
+      description: "Welcome to the Admin Panel",
+    });
+  };
+
+  const handleBiometricCancel = () => {
+    navigate("/");
+  };
 
   const handleBanUser = async () => {
     if (!banUsername.trim()) {
@@ -156,27 +193,65 @@ export default function AdminPanel() {
     }
   };
 
+  // Show biometric authentication if required
+  if (showBiometric) {
+    return (
+      <WorkingAdminBiometric 
+        open={showBiometric}
+        onComplete={handleBiometricComplete}
+        onCancel={handleBiometricCancel}
+        isSetup={false}
+      />
+    );
+  }
+
+  // Show loading while checking authentication
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-400">Verifying administrator access...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold">Admin Panel</h1>
-          <Button variant="outline" onClick={() => navigate("/")}>
-            Back to Chat
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/")}>
+              Back to Chat
+            </Button>
+            <Button variant="outline" onClick={() => setShowBiometric(true)}>
+              Re-authenticate
+            </Button>
+          </div>
         </div>
 
-        <Tabs defaultValue="rooms" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8">
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-8 lg:grid-cols-12">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="rooms">Rooms</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
             <TabsTrigger value="bans">Bans</TabsTrigger>
-            <TabsTrigger value="ban-words">Ban Words</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
-            <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+            <TabsTrigger value="files">Files</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="filtering">Filtering</TabsTrigger>
             <TabsTrigger value="ip-logger">IP Logger</TabsTrigger>
-            <TabsTrigger value="biometric">Biometric</TabsTrigger>
+            <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="overview">
+            <AdminControlPanel />
+          </TabsContent>
 
           <TabsContent value="rooms">
             <Card>
@@ -313,37 +388,43 @@ export default function AdminPanel() {
             </div>
           </TabsContent>
 
-          <TabsContent value="ban-words">
-            <BanWordManager />
+          <TabsContent value="users">
+            <AdminUserManagement />
           </TabsContent>
 
           <TabsContent value="reports">
             <AdminReportsList />
           </TabsContent>
 
-          <TabsContent value="api-keys">
-            <AdminAPIManager />
+          <TabsContent value="files">
+            <AdminFileModeration />
+          </TabsContent>
+
+          <TabsContent value="security">
+            <AdminSecurityPanel />
+          </TabsContent>
+
+          <TabsContent value="filtering">
+            <div className="space-y-6">
+              <BanWordManager />
+              <AdminMessageFiltering />
+            </div>
           </TabsContent>
 
           <TabsContent value="ip-logger">
             <EnhancedIPLogger />
           </TabsContent>
 
-          <TabsContent value="biometric">
-            <Card>
-              <CardHeader>
-                <CardTitle>Biometric Authentication</CardTitle>
-                <CardDescription>Set up Face ID for admin access</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <WorkingAdminBiometric 
-                  open={true}
-                  onComplete={() => {}}
-                  onCancel={() => {}}
-                  isSetup={true}
-                />
-              </CardContent>
-            </Card>
+          <TabsContent value="api-keys">
+            <AdminAPIManager />
+          </TabsContent>
+
+          <TabsContent value="analytics">
+            <AdminAnalytics />
+          </TabsContent>
+
+          <TabsContent value="settings">
+            <AdminSettings />
           </TabsContent>
         </Tabs>
       </div>

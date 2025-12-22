@@ -35,15 +35,19 @@ const UserSettingsDialog = ({ open, onClose, username }: UserSettingsDialogProps
 
 const loadApiKeys = async () => {
     try {
-      // For demo, generate API keys from user settings
-      const keys = await db.query("user_settings", { setting_key: "like.api_key_%", username: `eq.${username}` });
+      console.log("Loading API keys for username:", username);
+      // Get all API keys for this user
+      const keys = await db.query("user_settings", { 
+        username: `eq.${username}`,
+        setting_key: "like.api_key_%" 
+      });
       console.log("Loaded API keys:", keys);
       setApiKeys(keys || []);
     } catch (error) {
       console.log("Error loading API keys:", error);
       setApiKeys([]);
     }
-};
+  };
 
   const loadDirectMessages = async () => {
     try {
