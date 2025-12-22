@@ -26,7 +26,7 @@ const AdminAccessDialog = ({ open, onClose }: AdminAccessDialogProps) => {
     setShowBiometric(true);
   };
 
-  const handleCodeAccess = () => {
+const handleCodeAccess = () => {
     setAccessMethod("code");
   };
 
@@ -34,6 +34,7 @@ const AdminAccessDialog = ({ open, onClose }: AdminAccessDialogProps) => {
     setShowBiometric(false);
     localStorage.setItem('isAdmin', 'true');
     onClose();
+    // Navigate to correct admin panel route
     navigate('/admin-panel');
   };
 
@@ -47,7 +48,6 @@ const AdminAccessDialog = ({ open, onClose }: AdminAccessDialogProps) => {
       setCode("");
     }
   };
-
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="bg-card border-white/10 shadow-2xl max-w-md">

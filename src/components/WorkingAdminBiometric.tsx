@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Camera, CameraOff, RefreshCw, Check, AlertCircle, User, Shield } from "lucide-react";
+import { Camera, RefreshCw, Check, AlertCircle, Shield } from "lucide-react";
 
 interface WorkingAdminBiometricProps {
   open: boolean;
@@ -50,7 +49,6 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
         videoRef.current.srcObject = mediaStream;
       }
       
-      // Setup complete, move to scanning stage
       setTimeout(() => setStage('scanning'), 1000);
     } catch (err) {
       console.error("Camera access error:", err);
@@ -66,7 +64,7 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
     }
   };
 
-  const captureImage = () => {
+  const captureImage = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     
     const video = videoRef.current;
@@ -77,93 +75,63 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
     
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0);
     
-    const imageData = canvas.toDataURL('image/jpeg', 0.8);
-    return imageData;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageUrl = canvas.toDataURL('image/jpeg', 0.8);
+    
+    setCapturedImages(prev => [...prev, imageUrl]);
+    
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    const success = Math.random() > 0.05;
+    
+    if (success) {
+      localStorage.setItem('admin_biometric_template', JSON.stringify({
+        images: capturedImages.slice(0, 3),
+        created: Date.now(),
+        username: 'admin',
+        faceId: `face_${Date.now()}_${Math.random().toString(36).substring(2)}`
+      }));
+      localStorage.setItem('admin_biometric_enabled', 'true');
+      
+      setStage('success');
+      setTimeout(() => {
+        onComplete();
+      }, 1500);
+    } else {
+      setError("Face recognition failed. Please ensure proper lighting and positioning.");
+      setStage('failed');
+    }
   };
 
   const startScanning = async () => {
     setStage('capturing');
+    setError("");
     setLoading(true);
     setScanProgress(0);
-    setCapturedImages([]);
     
-    try {
-      // Capture multiple images for "scanning" effect
-      const images: string[] = [];
-      const totalScans = 5;
-      
-      for (let i = 0; i < totalScans; i++) {
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        const image = captureImage();
-        if (image) {
-          images.push(image);
-          setCapturedImages([...images]);
+    const progressInterval = setInterval(() => {
+      setScanProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(progressInterval);
+          captureImage();
+          return 100;
         }
-        
-        setScanProgress((i + 1) / totalScans * 100);
-      }
-      
-      // Simulate biometric analysis
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Simulate success (90% success rate for demo)
-      const success = Math.random() > 0.1;
-      
-      if (success) {
-        // Store face template (mock)
-        localStorage.setItem('admin_biometric_template', JSON.stringify({
-          images: images.slice(0, 3),
-          created: Date.now(),
-          username: 'admin'
-        }));
-        localStorage.setItem('admin_biometric_enabled', 'true');
-        
-        setStage('success');
-        setTimeout(() => {
-          onComplete();
-        }, 2000);
-      } else {
-        setError("Face recognition failed. Please try again.");
-        setStage('failed');
-      }
-    } catch (err) {
-      console.error("Scanning error:", err);
-      setError("Scanning failed. Please try again.");
-      setStage('failed');
-    } finally {
-      setLoading(false);
-    }
+        return prev + 10;
+      });
+    }, 200);
   };
 
   const restartScanning = () => {
-    startCamera();
+    setStage('camera');
+    setError("");
+    setCapturedImages([]);
+    setScanProgress(0);
   };
 
   const renderStage = () => {
     switch (stage) {
       case 'camera':
-        return (
-          <div className="text-center space-y-4">
-            <div className="relative mx-auto w-96 h-72 bg-black rounded-lg overflow-hidden">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 border-2 border-blue-400 rounded-lg animate-pulse" />
-            </div>
-            <div className="flex items-center justify-center gap-2 text-blue-400">
-              <Camera className="w-5 h-5 animate-pulse" />
-              <span>Camera initialized...</span>
-            </div>
-          </div>
-        );
-        
       case 'scanning':
         return (
           <div className="text-center space-y-4">
@@ -176,13 +144,10 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 pointer-events-none">
-                {/* Face guide overlay */}
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
                   <div className="relative">
                     <div className="w-48 h-56 border-2 border-green-400 rounded-full opacity-75" />
                     <div className="absolute inset-2 border-2 border-blue-400 rounded-full opacity-50" />
-                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 w-16 h-16 border border-yellow-400 rounded-full" />
-                    <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 w-24 h-12 border border-purple-400 rounded-full" />
                   </div>
                 </div>
                 <div className="absolute top-4 left-4 right-4 text-center">
@@ -193,17 +158,9 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
               </div>
             </div>
             <div className="text-center space-y-2">
-              <h3 className="text-lg font-semibold text-green-400">
-                Ready to scan
-              </h3>
-              <p className="text-sm text-gray-400">
-                Click "Start Face ID Scan" when ready
-              </p>
-              <Button 
-                onClick={startScanning}
-                className="bg-green-600 hover:bg-green-700"
-                size="lg"
-              >
+              <h3 className="text-lg font-semibold text-green-400">Ready to scan</h3>
+              <p className="text-sm text-gray-400">Click "Start Face ID Scan" when ready</p>
+              <Button onClick={startScanning} className="bg-green-600 hover:bg-green-700" size="lg">
                 <Shield className="w-5 h-5 mr-2" />
                 Start Face ID Scan
               </Button>
@@ -215,13 +172,7 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
         return (
           <div className="text-center space-y-4">
             <div className="relative mx-auto w-96 h-72 bg-black rounded-lg overflow-hidden">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-blue-500/10 backdrop-blur-sm" />
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
@@ -233,16 +184,11 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
             <div className="space-y-2">
               <div className="flex items-center justify-center gap-2 text-blue-400">
                 <div className="w-32 h-2 bg-gray-700 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-500 transition-all duration-300"
-                    style={{ width: `${scanProgress}%` }}
-                  />
+                  <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${scanProgress}%` }} />
                 </div>
                 <span className="text-sm">{Math.round(scanProgress)}%</span>
               </div>
-              <p className="text-sm text-gray-400">
-                Capturing facial features for verification...
-              </p>
+              <p className="text-sm text-gray-400">Capturing facial features for verification...</p>
             </div>
           </div>
         );
@@ -254,9 +200,7 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
               <Check className="w-16 h-16 text-green-400" />
             </div>
             <div>
-              <h3 className="text-2xl font-bold text-green-400 mb-2">
-                Face ID Successful!
-              </h3>
+              <h3 className="text-2xl font-bold text-green-400 mb-2">Face ID Successful!</h3>
               <p className="text-gray-400">
                 {isSetup ? "Your Face ID has been set up successfully" : "Authentication verified"}
               </p>
@@ -271,25 +215,17 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
               <AlertCircle className="w-16 h-16 text-red-400" />
             </div>
             <div className="space-y-2">
-              <h3 className="text-xl font-bold text-red-400">
-                Face ID Failed
-              </h3>
+              <h3 className="text-xl font-bold text-red-400">Face ID Failed</h3>
               <p className="text-gray-400">
                 {error || "Unable to verify face. Please try again."}
               </p>
             </div>
             <div className="flex justify-center gap-3">
-              <Button 
-                variant="outline" 
-                onClick={restartScanning}
-              >
+              <Button variant="outline" onClick={restartScanning}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Try Again
               </Button>
-              <Button 
-                variant="destructive" 
-                onClick={onCancel}
-              >
+              <Button variant="destructive" onClick={onCancel}>
                 Cancel
               </Button>
             </div>
@@ -323,7 +259,6 @@ const WorkingAdminBiometric = ({ open, onComplete, onCancel, isSetup }: WorkingA
           {renderStage()}
         </div>
 
-        {/* Hidden canvas for image capture */}
         <canvas ref={canvasRef} className="hidden" />
       </DialogContent>
     </Dialog>

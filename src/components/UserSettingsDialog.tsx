@@ -32,15 +32,17 @@ const UserSettingsDialog = ({ open, onClose, username }: UserSettingsDialogProps
     }
   }, [open]);
 
-  const loadApiKeys = async () => {
+const loadApiKeys = async () => {
     try {
       // For demo, generate API keys from user settings
       const keys = await db.query("user_settings", { setting_key: "like.api_key_%", username: `eq.${username}` });
-      setApiKeys(keys);
+      console.log("Loaded API keys:", keys);
+      setApiKeys(keys || []);
     } catch (error) {
       console.log("Error loading API keys:", error);
+      setApiKeys([]);
     }
-  };
+};
 
   const loadDirectMessages = async () => {
     try {
@@ -55,8 +57,9 @@ const UserSettingsDialog = ({ open, onClose, username }: UserSettingsDialogProps
     }
   };
 
-  const generateApiKey = async () => {
-    if (!newKeyName.trim()) return;
+const generateApiKey = async () => {
+    // Allow empty name - generate default if needed
+    const keyName = newKeyName.trim() || `key_${Date.now()}`;
     
     setLoading(true);
     try {
@@ -67,9 +70,11 @@ const UserSettingsDialog = ({ open, onClose, username }: UserSettingsDialogProps
         apiKey += chars.charAt(Math.floor(Math.random() * chars.length));
       }
       
+      console.log("Generating API key for:", username, "with name:", keyName);
+      
       await db.insert("user_settings", {
         username: username,
-        setting_key: `api_key_${newKeyName}_${Date.now()}`,
+        setting_key: `api_key_${keyName}_${Date.now()}`,
         setting_value: apiKey,
         created_at: Date.now()
       });
@@ -81,7 +86,7 @@ const UserSettingsDialog = ({ open, onClose, username }: UserSettingsDialogProps
         title: "API Key Generated",
         description: `${apiKey.substring(0, 12)}...${apiKey.substring(apiKey.length-4)} (${apiKey.length} characters)`,
       });
-    } catch (error) {
+} catch (error) {
       console.log("Error generating API key:", error);
       toast({
         title: "Error",
@@ -92,7 +97,6 @@ const UserSettingsDialog = ({ open, onClose, username }: UserSettingsDialogProps
       setLoading(false);
     }
   };
-
   const copyApiKey = (apiKey: string) => {
     navigator.clipboard.writeText(apiKey);
     toast({

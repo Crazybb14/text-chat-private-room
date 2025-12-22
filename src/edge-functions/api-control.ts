@@ -52,8 +52,8 @@ export default async function(req: Request): Promise<Response> {
 
     const body = req.method === "POST" ? await req.json() : {};
 
-    switch (action) {
-      case "send-message":
+switch (action) {
+case "send-message": {
         // Send a message as the user
         if (!body.roomId || !body.content) {
           return Response.json({ error: "roomId and content required" }, { 
@@ -62,6 +62,7 @@ export default async function(req: Request): Promise<Response> {
           });
         }
 
+        // Insert message
         const insertMsg = conn.prepare(
           "INSERT INTO messages (room_id, sender_name, content, is_ai, device_id, _created_at) VALUES (?, ?, ?, 0, ?, ?)"
         );
@@ -76,8 +77,14 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ success: true, message: "Message sent" }, { 
           headers: corsHeaders 
         });
-
-      case "send-direct-message":
+      }
+        const insertMsg = conn.prepare(
+          "INSERT INTO messages (room_id, sender_name, content, is_ai, device_id, _created_at) VALUES (?, ?, ?, 0, ?, ?)"
+        );
+        await insertMsg.run([
+          parseInt(body.roomId),
+          username,
+case "send-direct-message": {
         // Send direct message
         if (!body.recipient || !body.content) {
           return Response.json({ error: "recipient and content required" }, { 
@@ -86,6 +93,7 @@ export default async function(req: Request): Promise<Response> {
           });
         }
 
+        // Insert direct message
         const insertDM = conn.prepare(
           "INSERT INTO direct_messages (sender_username, recipient_username, content, is_read, _created_at) VALUES (?, ?, ?, 0, ?)"
         );
@@ -94,8 +102,7 @@ export default async function(req: Request): Promise<Response> {
         return Response.json({ success: true, message: "Direct message sent" }, { 
           headers: corsHeaders 
         });
-
-      case "get-messages":
+case "get-messages": {
         // Get messages from a room
         if (!body.roomId) {
           return Response.json({ error: "roomId required" }, { 
@@ -104,6 +111,68 @@ export default async function(req: Request): Promise<Response> {
           });
         }
 
+        // Get messages
+case "get-direct-messages": {
+        // Get direct messages
+        const getDMs = conn.prepare(`
+          SELECT * FROM direct_messages 
+          WHERE (sender_username = ? AND recipient_username = ?) 
+             OR (sender_username = ? AND recipient_username = ?)
+          ORDER BY _created_at DESC LIMIT ?
+        `);
+        const dms = await getDMs.all([username, body.otherUser, body.otherUser, username, body.limit || 50]);
+
+case "get-user-info": {
+        // Get user information
+        if (!body.targetUsername) {
+          return Response.json({ error: "targetUsername required" }, { 
+            status: 400, 
+            headers: corsHeaders 
+          });
+        }
+
+case "ban-user": {
+        // Ban a user (admin only through API)
+        if (!body.targetUsername) {
+          return Response.json({ error: "targetUsername required" }, { 
+            status: 400, 
+            headers: corsHeaders 
+          });
+        }
+
+        // Check if this user is admin (simplified check)
+        const adminCheck = conn.prepare("SELECT * FROM user_settings WHERE username = ? AND setting_key = 'is_admin'");
+        const isAdmin = await adminCheck.get([username]);
+
+        if (!isAdmin) {
+          return Response.json({ error: "Admin access required" }, { 
+            status: 403, 
+            headers: corsHeaders 
+          });
+        }
+
+        // Ban user
+        const banUser = conn.prepare(
+          "INSERT INTO bans (username, device_id, room_id, ban_reason, _created_at) VALUES (?, ?, ?, ?, ?)"
+        );
+        await banUser.run([
+          body.targetUsername,
+          body.deviceId || null,
+          body.roomId || null,
+          body.reason || "Banned via API",
+          Date.now()
+        ]);
+
+        return Response.json({ success: true, message: "User banned" }, { 
+          headers: corsHeaders 
+        });
+      }
+            status: 400, 
+            headers: corsHeaders 
+          });
+        }
+
+        // Get messages
         const getMsgs = conn.prepare(
           "SELECT * FROM messages WHERE room_id = ? ORDER BY _created_at DESC LIMIT ?"
         );
@@ -132,6 +201,7 @@ export default async function(req: Request): Promise<Response> {
           });
         }
 
+        // Get user info
         const getUser = conn.prepare(`
           SELECT DISTINCT sender_name as username, 
                  MAX(_created_at) as last_seen,
@@ -163,6 +233,7 @@ export default async function(req: Request): Promise<Response> {
           });
         }
 
+        // Ban user
         const banUser = conn.prepare(
           "INSERT INTO bans (username, device_id, room_id, ban_reason, _created_at) VALUES (?, ?, ?, ?, ?)"
         );
