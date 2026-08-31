@@ -16,23 +16,35 @@ const TermsOfUse = () => {
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const checkScroll = () => {
-      if (scrollAreaRef.current && contentRef.current) {
-        const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-        if (scrollElement) {
-          const scrollPercentage = (scrollElement.scrollTop / (contentRef.current.scrollHeight - scrollElement.clientHeight)) * 100;
-          if (scrollPercentage >= 95) {
-            setHasScrolledToBottom(true);
-          }
+    const getViewport = () =>
+      scrollAreaRef.current?.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]") ?? null;
+
+    const interval = setInterval(() => {
+      const el = getViewport();
+      if (!el || !contentRef.current) return;
+      const denom = contentRef.current.scrollHeight - el.clientHeight;
+      // Nothing to scroll (short content) counts as read through
+      if (denom <= 0 || (el.scrollTop / denom) * 100 >= 95) {
+        setHasScrolledToBottom(true);
+        clearInterval(interval);
+      }
+    }, 300);
+
+    // Keyboard users: pressing End jumps the terms to the bottom
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "End") {
+        const el = getViewport();
+        if (el) {
+          el.scrollTop = el.scrollHeight;
         }
       }
     };
+    document.addEventListener("keydown", onKey);
 
-    const scrollElement = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (scrollElement) {
-      scrollElement.addEventListener('scroll', checkScroll);
-      return () => scrollElement.removeEventListener('scroll', checkScroll);
-    }
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   const handleAccept = async () => {

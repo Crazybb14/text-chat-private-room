@@ -129,7 +129,7 @@ const FriendsDialog = ({ open, onClose, username }: FriendsDialogProps) => {
             onChange={(e) => setAddName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           />
-          <Button size="sm" onClick={handleAdd} disabled={busy || !addName.trim()}>
+          <Button size="sm" aria-label="Send friend request" onClick={handleAdd} disabled={busy || !addName.trim()}>
             <UserPlus className="w-4 h-4" />
           </Button>
         </div>
@@ -144,10 +144,10 @@ const FriendsDialog = ({ open, onClose, username }: FriendsDialogProps) => {
               <div key={row._row_id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-secondary/50">
                 <span className="text-sm font-medium truncate">{row.requested_by}</span>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="default" onClick={() => handleAccept(row)} disabled={busy}>
+                  <Button size="sm" variant="default" aria-label={`Accept ${row.requested_by}`} onClick={() => handleAccept(row)} disabled={busy}>
                     <Check className="w-4 h-4" />
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleDecline(row)} disabled={busy}>
+                  <Button size="sm" variant="outline" aria-label={`Decline ${row.requested_by}`} onClick={() => handleDecline(row)} disabled={busy}>
                     <X className="w-4 h-4" />
                   </Button>
                 </div>

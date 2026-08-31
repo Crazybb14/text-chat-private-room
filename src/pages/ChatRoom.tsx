@@ -338,7 +338,7 @@ const ChatRoom = () => {
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <NotificationBell username={username || ""} />
-            <Button variant="ghost" size="icon" title="Friends" onClick={() => setFriendsOpen(true)}>
+            <Button variant="ghost" size="icon" aria-label="Friends" title="Friends" onClick={() => setFriendsOpen(true)}>
               <Users className="w-5 h-5" />
             </Button>
           </div>

@@ -287,13 +287,13 @@ const Index = () => {
           </div>
           <div className="flex items-center gap-1">
             <NotificationBell username={username || ""} />
-            <Button variant="ghost" size="icon" title="Friends" onClick={() => setFriendsOpen(true)}>
+            <Button variant="ghost" size="icon" aria-label="Friends" title="Friends" onClick={() => setFriendsOpen(true)}>
               <Users className="w-5 h-5" />
             </Button>
-            <Button variant="ghost" size="icon" title="Settings" onClick={() => navigate("/settings")}>
+            <Button variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={() => navigate("/settings")}>
               <SettingsIcon className="w-5 h-5" />
             </Button>
-            <Button variant="ghost" size="icon" title="Admin" onClick={() => navigate("/admin")}>
+            <Button variant="ghost" size="icon" aria-label="Admin" title="Admin" onClick={() => navigate("/admin")}>
               <Shield className="w-5 h-5" />
             </Button>
           </div>

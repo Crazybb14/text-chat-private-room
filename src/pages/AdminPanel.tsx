@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
+import { downloadWebsiteZip } from "@/lib/websiteZip";
 import { type UserRow } from "@/lib/userManagement";
 
 interface RoomRow {
@@ -349,11 +350,11 @@ const AdminPanel = () => {
                     Download a ZIP of this site's source code (snapshot from {WEBSITE_SNAPSHOT_DATE}).
                   </p>
                 </div>
-                <a href="/website-source.zip" download>
+                <span onClick={downloadWebsiteZip}>
                   <Button>
                     <Download className="w-4 h-4 mr-2" /> Download Website
                   </Button>
-                </a>
+                </span>
               </CardContent>
             </Card>
             <Card>
@@ -696,11 +697,11 @@ const AdminPanel = () => {
                   This downloads a ZIP file with this website's complete source code — every page,
                   component, style, and the database setup.
                 </p>
-                <a href="/website-source.zip" download>
+                <span onClick={downloadWebsiteZip}>
                   <Button size="lg">
                     <Download className="w-4 h-4 mr-2" /> Download Website (.zip)
                   </Button>
-                </a>
+                </span>
                 <p className="text-xs text-muted-foreground">
                   Snapshot generated {WEBSITE_SNAPSHOT_DATE}. If the site changes after that, ask for
                   a fresh snapshot and this button will download the newest code.
