@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, LogIn, MessageSquare, UserPlus } from "lucide-react";
+import { Loader2, LogIn, MessageSquare, UserPlus, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import auth from "@/lib/shared/kliv-auth.js";
 import UserManager from "@/lib/userManagement";
 import { validateSignup } from "@/lib/signupValidation";
+import { settingBool, settingText, useAppSettings } from "@/lib/appSettings";
 import DowntimeScreen, { getActiveDowntime, type DowntimeInfo } from "@/components/DowntimeScreen";
 
 type OAuthProviderOption = { provider: "google" | "facebook" | "apple"; label: string };
@@ -29,6 +30,10 @@ const Login = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [providers, setProviders] = useState<OAuthProviderOption[]>([]);
+
+  const { settings } = useAppSettings();
+  const registrationOpen = settingBool(settings, "registration_open");
+  const siteName = settingText(settings, "site_name") || "ChatRooms";
 
   const [siEmail, setSiEmail] = useState("");
   const [siPassword, setSiPassword] = useState("");
@@ -148,7 +153,7 @@ const Login = () => {
         lastName: lastName.trim(),
       });
       await UserManager.logLoginIp(chosen);
-      toast({ title: "Account created", description: "Welcome to ChatRooms!" });
+      toast({ title: "Account created", description: `Welcome to ${siteName}!` });
       navigate("/", { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -172,7 +177,7 @@ const Login = () => {
           <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
             <MessageSquare className="w-5 h-5 text-primary" />
           </div>
-          <span className="font-bold text-xl">ChatRooms</span>
+          <span className="font-bold text-xl">{siteName}</span>
         </div>
 
         <Card>
@@ -221,6 +226,7 @@ const Login = () => {
               </TabsContent>
 
               <TabsContent value="signup">
+                {registrationOpen ? (
                 <form onSubmit={handleSignUp} className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
@@ -291,6 +297,15 @@ const Login = () => {
                     Create account
                   </Button>
                 </form>
+                ) : (
+                  <div className="text-center space-y-3 py-6">
+                    <UserX className="w-8 h-8 mx-auto text-muted-foreground" />
+                    <p className="font-semibold">Sign-ups are closed</p>
+                    <p className="text-sm text-muted-foreground">
+                      New accounts can't be created right now. Check back later.
+                    </p>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
 

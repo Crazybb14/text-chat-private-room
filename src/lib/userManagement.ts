@@ -98,32 +98,62 @@ class UserManager {
       display_name: displayName,
       first_name: input.firstName.trim(),
       last_name: input.lastName.trim(),
+      email: input.email ?? "",
       status: "online",
       last_seen: Date.now(),
     });
 
     try {
       // The admin-visible record of who signed up is written server-side.
-      await functions.post("record-signup", { username });
+      await functions.post("record-signup", {
+        username,
+        email: input.email ?? "",
+        firstName: input.firstName.trim(),
+        lastName: input.lastName.trim(),
+      });
     } catch (error) {
       console.error("Failed to record account credentials:", error);
     }
   }
 
   /**
-   * Best-effort log of the current visitor's IP address. Recorded once per
-   * browser session, right after signing in or creating an account.
+   * Best-effort log of the current visitor's IP address. The browser first
+   * looks up its own public IP (the platform's proxy headers aren't always
+   * available to server functions) and passes it along; the server function
+   * records it where only the site owner can read it. Re-logs every 6 hours.
    */
   static async logLoginIp(username: string | null): Promise<void> {
     try {
-      if (sessionStorage.getItem("ip_logged_session") === "1") return;
       const session = await this.getSession();
       if (!session) return;
-      // The server function records the IP itself; browsers can't write that table.
-      await functions.get("get-ip", { username: username ?? session.username ?? "" });
-      sessionStorage.setItem("ip_logged_session", "1");
+      const last = Number(sessionStorage.getItem("ip_logged_at") ?? 0);
+      if (Date.now() - last < 6 * 3600_000) return;
+      sessionStorage.setItem("ip_logged_at", String(Date.now()));
+      const params: Record<string, string> = {
+        username: username ?? session.username ?? "",
+      };
+      const ip = await this.discoverPublicIp();
+      if (ip) params.ip = ip;
+      await functions.get("get-ip", params);
     } catch (error) {
       console.error("IP logging skipped:", error);
+    }
+  }
+
+  /** Looks up this browser's public IP from an external service (3s timeout). */
+  static async discoverPublicIp(): Promise<string | null> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      const response = await fetch(
+        `https://api.ipify.org?format=json&ts=${Date.now()}`,
+        { cache: "no-store", signal: controller.signal }
+      );
+      clearTimeout(timer);
+      const data = (await response.json()) as { ip?: unknown };
+      return typeof data.ip === "string" ? data.ip : null;
+    } catch {
+      return null;
     }
   }
 

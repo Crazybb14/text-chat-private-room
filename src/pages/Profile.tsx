@@ -19,6 +19,7 @@ import {
   type Relationship,
 } from "@/lib/friends";
 import { getDeviceId } from "@/lib/deviceId";
+import { settingBool, useAppSettings } from "@/lib/appSettings";
 
 const Profile = () => {
   const { username: rawUsername } = useParams<{ username: string }>();
@@ -32,6 +33,9 @@ const Profile = () => {
   const [firstSeen, setFirstSeen] = useState<number | null>(null);
   const [relationship, setRelationship] = useState<Relationship>("none");
   const [busy, setBusy] = useState(false);
+  const { settings } = useAppSettings();
+  const friendsAllowed = settingBool(settings, "allow_friend_requests");
+  const dmsAllowed = settingBool(settings, "allow_direct_messages");
 
   const load = useCallback(async () => {
     const myUser = await UserManager.getUsername();
@@ -165,7 +169,7 @@ const Profile = () => {
                 <Button onClick={() => navigate("/settings")}>Edit profile</Button>
               ) : (
                 <>
-                  {relationship === "none" && (
+                  {relationship === "none" && friendsAllowed && (
                     <Button onClick={handleAdd} disabled={busy}>
                       <UserPlus className="w-4 h-4 mr-2" /> Add friend
                     </Button>
@@ -182,9 +186,11 @@ const Profile = () => {
                   )}
                   {relationship === "friends" && (
                     <>
-                      <Button onClick={() => navigate(`/dm/${username}`)}>
-                        <MessageSquare className="w-4 h-4 mr-2" /> Message
-                      </Button>
+                      {dmsAllowed && (
+                        <Button onClick={() => navigate(`/dm/${username}`)}>
+                          <MessageSquare className="w-4 h-4 mr-2" /> Message
+                        </Button>
+                      )}
                       <Button variant="outline" onClick={handleRemove} disabled={busy}>
                         <UserMinus className="w-4 h-4 mr-2" /> Remove friend
                       </Button>

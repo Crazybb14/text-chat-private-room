@@ -22,6 +22,7 @@ import {
   type Relationship,
 } from "@/lib/friends";
 import { Check, Flag, MessageSquare, UserMinus, UserPlus } from "lucide-react";
+import { settingBool, useAppSettings } from "@/lib/appSettings";
 
 interface UsernameClickMenuProps {
   target: string;
@@ -39,6 +40,9 @@ const REPORT_REASONS = [
 const UsernameClickMenu = ({ target, currentUsername }: UsernameClickMenuProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { settings } = useAppSettings();
+  const friendsAllowed = settingBool(settings, "allow_friend_requests");
+  const dmsAllowed = settingBool(settings, "allow_direct_messages");
   const [relationship, setRelationship] = useState<Relationship>("none");
   const [busy, setBusy] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -129,7 +133,7 @@ const UsernameClickMenu = ({ target, currentUsername }: UsernameClickMenuProps) 
           <DropdownMenuItem onClick={() => navigate(`/profile/${target}`)}>
             View profile
           </DropdownMenuItem>
-          {relationship === "none" && (
+          {relationship === "none" && friendsAllowed && (
             <DropdownMenuItem onClick={handleAddFriend} disabled={busy}>
               <UserPlus className="w-4 h-4 mr-2" /> Add friend
             </DropdownMenuItem>
@@ -146,9 +150,11 @@ const UsernameClickMenu = ({ target, currentUsername }: UsernameClickMenuProps) 
           )}
           {relationship === "friends" && (
             <>
-              <DropdownMenuItem onClick={() => navigate(`/dm/${target}`)}>
-                <MessageSquare className="w-4 h-4 mr-2" /> Message
-              </DropdownMenuItem>
+              {dmsAllowed && (
+                <DropdownMenuItem onClick={() => navigate(`/dm/${target}`)}>
+                  <MessageSquare className="w-4 h-4 mr-2" /> Message
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={handleRemoveFriend} disabled={busy}>
                 <UserMinus className="w-4 h-4 mr-2" /> Remove friend
               </DropdownMenuItem>

@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Loader2, Lock, Send, User } from "lucide-react";
+import { ArrowLeft, Loader2, Lock, MessageSquareOff, Send, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import db from "@/lib/shared/kliv-database.js";
 import UserManager from "@/lib/userManagement";
+import {
+  filterMessage,
+  settingBool,
+  settingNumber,
+  useAppSettings,
+} from "@/lib/appSettings";
+import { isPresenceOnline } from "@/lib/presence";
 import {
   getDirectMessages,
   getProfile,
@@ -33,6 +41,29 @@ const DirectMessage = () => {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const countRef = useRef(0);
+
+  const { settings } = useAppSettings();
+  const maxMessageLength = Math.max(50, settingNumber(settings, "max_message_length") || 2000);
+  const dmsAllowed = settingBool(settings, "allow_direct_messages");
+  const [targetOnline, setTargetOnline] = useState(false);
+
+  // Live online dot for the other person
+  useEffect(() => {
+    if (!target) return;
+    const check = async () => {
+      try {
+        const rows = await db.query<{ last_seen: string }>("online_users", {
+          username: `eq.${target}`,
+        });
+        setTargetOnline(rows.length > 0 && isPresenceOnline(rows[0]));
+      } catch {
+        // best-effort
+      }
+    };
+    check();
+    const timer = setInterval(check, 20000);
+    return () => clearInterval(timer);
+  }, [target]);
 
   const load = useCallback(async () => {
     if (!me || !target) return;
@@ -86,7 +117,7 @@ const DirectMessage = () => {
     if (!content || !me) return;
     setSending(true);
     try {
-      await sendDirectMessage(me, target, content.slice(0, 2000));
+      await sendDirectMessage(me, target, filterMessage(content.slice(0, maxMessageLength), settings));
       setInput("");
       await load();
     } catch {
@@ -118,12 +149,17 @@ const DirectMessage = () => {
             className="flex items-center gap-2 min-w-0 text-left"
             onClick={() => navigate(`/profile/${target}`)}
           >
-            <Avatar className="w-8 h-8 border border-white/10">
-              {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
-              <AvatarFallback className="bg-primary/20 text-xs">
-                {target.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="w-8 h-8 border border-white/10">
+                {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
+                <AvatarFallback className="bg-primary/20 text-xs">
+                  {target.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              {targetOnline && (
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-background" />
+              )}
+            </div>
             <div className="min-w-0">
               <p className="font-bold truncate">{displayName}</p>
               <p className="text-xs text-muted-foreground">@{target}</p>
@@ -134,6 +170,15 @@ const DirectMessage = () => {
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-4">
+          {!dmsAllowed && (
+            <Card className="mb-4">
+              <CardContent className="py-3 flex items-center gap-2 text-sm text-muted-foreground">
+                <MessageSquareOff className="w-4 h-4 shrink-0" />
+                Direct messages are turned off by the site admin right now.
+              </CardContent>
+            </Card>
+          )}
+
           {!isFriend && (
             <Card className="mb-4">
               <CardContent className="py-3 flex items-center gap-2 text-sm text-muted-foreground">
@@ -196,11 +241,17 @@ const DirectMessage = () => {
                 handleSend();
               }
             }}
-            placeholder={isFriend ? `Message ${target}...` : "Friends only can message"}
-            disabled={!isFriend}
-            maxLength={2000}
+            placeholder={
+              !dmsAllowed
+                ? "Direct messages are off"
+                : isFriend
+                  ? `Message ${target}...`
+                  : "Friends only can message"
+            }
+            disabled={!isFriend || !dmsAllowed}
+            maxLength={maxMessageLength}
           />
-          <Button type="submit" size="icon" disabled={!isFriend || sending || !input.trim()}>
+          <Button type="submit" size="icon" disabled={!isFriend || !dmsAllowed || sending || !input.trim()}>
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </form>

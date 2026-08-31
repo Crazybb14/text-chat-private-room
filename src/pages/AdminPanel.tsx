@@ -4,11 +4,14 @@ import {
   ArrowLeft,
   Ban as BanIcon,
   CheckCircle2,
+  Copy,
   DoorOpen,
   Download,
+  Eraser,
   Eye,
   EyeOff,
   Flag,
+  KeyRound,
   Lightbulb,
   Loader2,
   LogIn,
@@ -16,6 +19,7 @@ import {
   MessageSquare,
   Plus,
   RefreshCw,
+  Search,
   Shield,
   Trash2,
   UserCog,
@@ -26,7 +30,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -37,8 +50,17 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import auth from "@/lib/shared/kliv-auth.js";
+import { functions } from "@/lib/shared/kliv-functions.js";
 import { downloadWebsiteZip } from "@/lib/websiteZip";
 import UserManager, { type SessionInfo } from "@/lib/userManagement";
+import {
+  SETTING_DEFS,
+  SETTING_GROUPS,
+  suggestPassword,
+  useAppSettings,
+  type SettingValue,
+} from "@/lib/appSettings";
+import { isPresenceOnline, parseSeen, type PresenceRow } from "@/lib/presence";
 
 interface RoomRow {
   _row_id: number;
@@ -135,6 +157,16 @@ interface TypingRow {
   [key: string]: unknown;
 }
 
+interface AuditRow {
+  _row_id: number;
+  action: string;
+  actor_email: string | null;
+  target: string | null;
+  detail: string | null;
+  _created_at: number;
+  [key: string]: unknown;
+}
+
 const WEBSITE_SNAPSHOT_DATE = "August 31, 2026";
 
 const generateRoomCode = () => {
@@ -146,7 +178,7 @@ const generateRoomCode = () => {
 
 const fmtTime = (value: number) =>
   value
-    ? new Date(value).toLocaleString([], {
+    ? new Date(value * (value > 1e11 ? 1 : 1000)).toLocaleString([], {
         month: "short",
         day: "numeric",
         hour: "numeric",
@@ -169,6 +201,8 @@ const AdminPanel = () => {
   const [profiles, setProfiles] = useState<ProfileAccountRow[]>([]);
   const [credentials, setCredentials] = useState<CredentialRow[]>([]);
   const [ips, setIps] = useState<IpRow[]>([]);
+  const [presence, setPresence] = useState<PresenceRow[]>([]);
+  const [audit, setAudit] = useState<AuditRow[]>([]);
   const [ownerDataError, setOwnerDataError] = useState<string | null>(null);
   const [messageRoom, setMessageRoom] = useState<string>("all");
   const [loading, setLoading] = useState(false);
@@ -178,6 +212,7 @@ const AdminPanel = () => {
   const [banInput, setBanInput] = useState("");
   const [downtimeHours, setDowntimeHours] = useState("2");
   const [downtimeReason, setDowntimeReason] = useState("");
+  const [ipFilter, setIpFilter] = useState("");
 
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
   const [liveRoom, setLiveRoom] = useState<string>("");
@@ -187,6 +222,17 @@ const AdminPanel = () => {
   const [asText, setAsText] = useState("");
   const [asBusy, setAsBusy] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<string | null>(null);
+
+  // Settings + cleanup
+  const { settings, loaded: settingsLoaded, update: updateSetting, reload: reloadSettings } = useAppSettings();
+  const [purgeInfo, setPurgeInfo] = useState<{ at: number; count: number } | null>(null);
+  const [purgeBusy, setPurgeBusy] = useState(false);
+
+  // Password reset
+  const [pwTarget, setPwTarget] = useState<{ userId: string; username: string } | null>(null);
+  const [pwValue, setPwValue] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwDone, setPwDone] = useState<string | null>(null);
 
   useEffect(() => {
     setAuthorized(localStorage.getItem("isAdmin") === "true");
@@ -216,7 +262,7 @@ const AdminPanel = () => {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [roomRows, banRows, reportRows, suggestionRows, downtimeRows, profileRows] =
+      const [roomRows, banRows, reportRows, suggestionRows, downtimeRows, profileRows, presenceRows] =
         await Promise.all([
           db.query<RoomRow>("rooms", { order: "_row_id.asc" }),
           db.query<BanRow>("bans", { order: "_created_at.desc" }),
@@ -224,6 +270,7 @@ const AdminPanel = () => {
           db.query<SuggestionRow>("suggestions", { order: "_created_at.desc" }),
           db.query<DowntimeRow>("downtime_schedules", { order: "start_time.desc" }),
           db.query<ProfileAccountRow>("user_profiles", { order: "_created_at.desc" }),
+          db.query<PresenceRow>("online_users", { order: "last_seen.desc" }),
         ]);
       setRooms(roomRows);
       setBans(banRows);
@@ -231,6 +278,7 @@ const AdminPanel = () => {
       setSuggestions(suggestionRows);
       setDowntimes(downtimeRows);
       setProfiles(profileRows);
+      setPresence(presenceRows);
     } catch (error) {
       console.error("Admin load failed:", error);
       toast({ title: "Couldn't load admin data", variant: "destructive" });
@@ -244,6 +292,20 @@ const AdminPanel = () => {
       loadAll();
     }
   }, [authorized, loadAll]);
+
+  // Keep online/offline status fresh while the panel is open
+  useEffect(() => {
+    if (!authorized) return;
+    const loadPresence = async () => {
+      try {
+        setPresence(await db.query<PresenceRow>("online_users", { order: "last_seen.desc" }));
+      } catch {
+        // best-effort
+      }
+    };
+    const timer = setInterval(loadPresence, 30000);
+    return () => clearInterval(timer);
+  }, [authorized]);
 
   const loadMessages = useCallback(async () => {
     try {
@@ -260,15 +322,34 @@ const AdminPanel = () => {
     }
   }, [authorized, session, loadMessages]);
 
+  const loadPurgeInfo = useCallback(async () => {
+    try {
+      const rows = await db.query<{ setting_key: string; setting_value: string }>("admin_settings");
+      const at = Number(rows.find((r) => r.setting_key === "last_purge_at")?.setting_value ?? 0);
+      const count = Number(rows.find((r) => r.setting_key === "last_purge_count")?.setting_value ?? 0);
+      setPurgeInfo(at > 0 ? { at, count } : null);
+    } catch {
+      // best-effort
+    }
+  }, []);
+
+  useEffect(() => {
+    if (authorized) {
+      loadPurgeInfo();
+    }
+  }, [authorized, loadPurgeInfo]);
+
   const loadOwnerData = useCallback(async () => {
     setOwnerDataError(null);
     try {
-      const [credRows, ipRows] = await Promise.all([
+      const [credRows, ipRows, auditRows] = await Promise.all([
         db.query<CredentialRow>("account_credentials", { order: "_created_at.desc" }),
         db.query<IpRow>("ip_logs", { order: "_created_at.desc" }),
+        db.query<AuditRow>("admin_audit", { order: "_created_at.desc", limit: "20" }),
       ]);
       setCredentials(credRows);
       setIps(ipRows);
+      setAudit(auditRows);
     } catch {
       setOwnerDataError("Couldn't load account and IP data.");
     }
@@ -339,10 +420,14 @@ const AdminPanel = () => {
     loadMessages();
   };
 
+  const openRoomById = (id: number) => {
+    sessionStorage.setItem(`room_unlocked_${id}`, "1");
+    navigate(`/chat/${id}`);
+  };
+
   const handleOpenRoom = (room: RoomRow) => {
     // Admins skip the private-room code gate
-    sessionStorage.setItem(`room_unlocked_${room._row_id}`, "1");
-    navigate(`/chat/${room._row_id}`);
+    openRoomById(room._row_id);
   };
 
   const handleDeleteMessage = async (row: MessageRow) => {
@@ -474,6 +559,68 @@ const AdminPanel = () => {
     loadAll();
   };
 
+  const handleSettingChange = async (key: string, value: SettingValue) => {
+    try {
+      await updateSetting(key, value);
+      toast({ title: "Saved", description: "The live site now uses this." });
+    } catch {
+      toast({ title: "Couldn't save that setting", variant: "destructive" });
+      reloadSettings();
+    }
+  };
+
+  const handleRunPurgeNow = async () => {
+    setPurgeBusy(true);
+    try {
+      const result = await functions.post<{ deletedMessages?: number }>("purge-messages", {});
+      toast({
+        title: "Cleanup finished",
+        description: `${result?.deletedMessages ?? 0} old room message(s) deleted. Private messages were kept.`,
+      });
+      loadPurgeInfo();
+      loadMessages();
+    } catch {
+      toast({ title: "Cleanup failed", variant: "destructive" });
+    } finally {
+      setPurgeBusy(false);
+    }
+  };
+
+  const openResetPassword = (userId: string, username: string) => {
+    setPwTarget({ userId, username });
+    setPwValue(suggestPassword());
+    setPwDone(null);
+  };
+
+  const handleResetPassword = async () => {
+    if (!pwTarget || pwValue.length < 8) return;
+    setPwBusy(true);
+    try {
+      await functions.post("owner-set-password", {
+        userUuid: pwTarget.userId,
+        password: pwValue,
+        username: pwTarget.username,
+      });
+      setPwDone(pwValue);
+      toast({
+        title: "Password reset",
+        description: `@${pwTarget.username} can now sign in with the new password.`,
+      });
+      loadOwnerData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      toast({
+        title: "Couldn't reset that password",
+        description: message.includes("forbidden")
+          ? "Sign in with the site owner's own account to reset passwords."
+          : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setPwBusy(false);
+    }
+  };
+
   const handleAdminSignOut = () => {
     localStorage.removeItem("isAdmin");
     navigate("/admin");
@@ -509,8 +656,8 @@ const AdminPanel = () => {
         <Shield className="w-8 h-8 mx-auto text-muted-foreground" />
         <p className="font-semibold">Site owner only</p>
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Account details and IP addresses are only visible when you're signed in as the site
-          owner's own login.
+          Account details, IP addresses, password resets, and site settings are only available
+          when you're signed in as the site owner's own login.
         </p>
       </CardContent>
     </Card>
@@ -544,12 +691,18 @@ const AdminPanel = () => {
   const filteredMessages =
     messageRoom === "all" ? messages : messages.filter((m) => String(m.room_id) === messageRoom);
 
+  const onlineUsernames = new Set(
+    presence.filter((p) => isPresenceOnline(p, now)).map((p) => p.username)
+  );
+
   const accounts = profiles.map((p) => {
     const cred = credentials.find((c) => c.user_id === p.user_id);
+    const pres = presence.find((r) => r.username === p.username);
     const name =
       [cred?.first_name ?? p.first_name ?? "", cred?.last_name ?? p.last_name ?? ""]
         .filter(Boolean)
         .join(" ") || p.display_name || "";
+    const seenAt = pres ? parseSeen(pres.last_seen) : 0;
     return {
       userId: p.user_id,
       username: p.username,
@@ -557,7 +710,20 @@ const AdminPanel = () => {
       email: cred?.email ?? null,
       joined: Number(p._created_at),
       lastIp: ips.find((i) => i.user_id === p.user_id)?.ip ?? null,
+      online: pres ? isPresenceOnline(pres, now) : false,
+      lastSeen: seenAt,
+      roomId: pres?.room_id != null ? Number(pres.room_id) : null,
     };
+  });
+
+  const filteredIps = ips.filter((row) => {
+    const q = ipFilter.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (row.username ?? "").toLowerCase().includes(q) ||
+      (row.email ?? "").toLowerCase().includes(q) ||
+      row.ip.toLowerCase().includes(q)
+    );
   });
 
   const liveRoomName = liveRoom ? roomName(Number(liveRoom)) : "";
@@ -579,6 +745,12 @@ const AdminPanel = () => {
             {session && (
               <Badge variant={session.isPrimaryTeam ? "default" : "secondary"} className="ml-2">
                 {session.isPrimaryTeam ? "owner" : session.email ?? "signed in"}
+              </Badge>
+            )}
+            {onlineUsernames.size > 0 && (
+              <Badge variant="outline" className="ml-2 gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                {onlineUsernames.size} online
               </Badge>
             )}
           </div>
@@ -608,13 +780,15 @@ const AdminPanel = () => {
             </TabsTrigger>
             <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
             <TabsTrigger value="downtime">Downtime</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
             <TabsTrigger value="download">Download</TabsTrigger>
           </TabsList>
 
           {/* OVERVIEW */}
           <TabsContent value="overview" className="space-y-4 mt-4">
-            <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
               {[
+                { label: "Online now", value: onlineUsernames.size, icon: Wifi },
                 { label: "Rooms", value: rooms.length, icon: MessageSquare },
                 { label: "Accounts", value: profiles.length, icon: UserCog },
                 { label: "Messages (last 100)", value: messages.length, icon: MessageSquare },
@@ -712,50 +886,60 @@ const AdminPanel = () => {
                   </CardContent>
                 </Card>
                 <div className="space-y-2">
-                  {rooms.map((room) => (
-                    <Card key={room._row_id}>
-                      <CardContent className="py-3 flex items-center justify-between gap-3 flex-wrap">
-                        <div className="min-w-0">
-                          <p className="font-semibold truncate">{room.name}</p>
-                          <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-                            <span>
-                              {room.type === "private" ? "Private" : "Public"} · Room #{room._row_id}
-                            </span>
-                            {room.type === "private" && (
-                              <span className="inline-flex items-center gap-1">
-                                · Code:
-                                <code className="font-mono bg-secondary px-1.5 py-0.5 rounded">
-                                  {revealed[room._row_id] ? room.code : "••••••"}
-                                </code>
-                                <button
-                                  type="button"
-                                  className="text-muted-foreground hover:text-foreground"
-                                  aria-label={revealed[room._row_id] ? "Hide room code" : "Show room code"}
-                                  onClick={() =>
-                                    setRevealed((prev) => ({ ...prev, [room._row_id]: !prev[room._row_id] }))
-                                  }
-                                >
-                                  {revealed[room._row_id] ? (
-                                    <EyeOff className="w-4 h-4" />
-                                  ) : (
-                                    <Eye className="w-4 h-4" />
-                                  )}
-                                </button>
+                  {rooms.map((room) => {
+                    const inRoom = presence.filter(
+                      (p) => Number(p.room_id) === room._row_id && isPresenceOnline(p, now)
+                    ).length;
+                    return (
+                      <Card key={room._row_id}>
+                        <CardContent className="py-3 flex items-center justify-between gap-3 flex-wrap">
+                          <div className="min-w-0">
+                            <p className="font-semibold truncate">{room.name}</p>
+                            <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                              <span>
+                                {room.type === "private" ? "Private" : "Public"} · Room #{room._row_id}
                               </span>
-                            )}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={() => handleOpenRoom(room)}>
-                            <DoorOpen className="w-4 h-4 mr-2" /> Open room
-                          </Button>
-                          <Button variant="destructive" size="sm" onClick={() => handleDeleteRoom(room)}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                              {inRoom > 0 && (
+                                <span className="inline-flex items-center gap-1 text-emerald-500">
+                                  · <Wifi className="w-3 h-3" /> {inRoom} in room
+                                </span>
+                              )}
+                              {room.type === "private" && (
+                                <span className="inline-flex items-center gap-1">
+                                  · Code:
+                                  <code className="font-mono bg-secondary px-1.5 py-0.5 rounded">
+                                    {revealed[room._row_id] ? room.code : "••••••"}
+                                  </code>
+                                  <button
+                                    type="button"
+                                    className="text-muted-foreground hover:text-foreground"
+                                    aria-label={revealed[room._row_id] ? "Hide room code" : "Show room code"}
+                                    onClick={() =>
+                                      setRevealed((prev) => ({ ...prev, [room._row_id]: !prev[room._row_id] }))
+                                    }
+                                  >
+                                    {revealed[room._row_id] ? (
+                                      <EyeOff className="w-4 h-4" />
+                                    ) : (
+                                      <Eye className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" onClick={() => handleOpenRoom(room)}>
+                              <DoorOpen className="w-4 h-4 mr-2" /> Open room
+                            </Button>
+                            <Button variant="destructive" size="sm" onClick={() => handleDeleteRoom(room)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                   {rooms.length === 0 && <p className="text-sm text-muted-foreground">No rooms yet.</p>}
                 </div>
               </>
@@ -948,9 +1132,19 @@ const AdminPanel = () => {
                           </p>
                           <p className="text-sm break-words">{message.content}</p>
                         </div>
-                        <Button variant="destructive" size="sm" onClick={() => handleDeleteMessage(message)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openRoomById(message.room_id)}
+                            aria-label={`Open ${roomName(message.room_id)}`}
+                          >
+                            <DoorOpen className="w-4 h-4" />
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => handleDeleteMessage(message)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -972,9 +1166,10 @@ const AdminPanel = () => {
                   </Card>
                 )}
                 <Card>
-                  <CardContent className="py-3 text-xs text-muted-foreground">
-                    Every account created on the site. Passwords are stored securely and can never
-                    be viewed — not even here. Emails and IPs are only visible to the site owner.
+                  <CardContent className="py-3 text-xs text-muted-foreground space-y-1">
+                    Every account created on the site, with live online status. Passwords are stored
+                    securely and can never be viewed by anyone — but you can reset any account's
+                    password with the key button, which gives you full access to that account.
                   </CardContent>
                 </Card>
                 <div className="space-y-2">
@@ -982,8 +1177,19 @@ const AdminPanel = () => {
                     <Card key={acct.userId}>
                       <CardContent className="py-3 flex items-start justify-between gap-3 flex-wrap">
                         <div className="min-w-0">
-                          <p className="font-semibold truncate">
-                            @{acct.username}{" "}
+                          <p className="font-semibold truncate flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+                                acct.online ? "bg-emerald-500" : "bg-muted-foreground/40"
+                              }`}
+                            />
+                            @{acct.username}
+                            <Badge
+                              className={acct.online ? "bg-emerald-600" : ""}
+                              variant={acct.online ? "default" : "secondary"}
+                            >
+                              {acct.online ? "online" : "offline"}
+                            </Badge>
                             {bannedUsernames.has(acct.username) && <Badge variant="destructive">banned</Badge>}
                           </p>
                           <p className="text-xs text-muted-foreground break-words">
@@ -992,9 +1198,34 @@ const AdminPanel = () => {
                           <p className="text-xs text-muted-foreground">
                             Joined {fmtTime(acct.joined)}
                             {acct.lastIp ? ` · Last IP ${acct.lastIp}` : ""}
+                            {acct.online && acct.roomId ? ` · In ${roomName(acct.roomId)}` : ""}
+                            {!acct.online && acct.lastSeen ? ` · Last active ${fmtTime(acct.lastSeen)}` : ""}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/profile/${acct.username}`)}
+                          >
+                            Profile
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/dm/${acct.username}`)}
+                          >
+                            Message
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            aria-label={`Reset ${acct.username}'s password`}
+                            title="Reset password"
+                            onClick={() => openResetPassword(acct.userId, acct.username)}
+                          >
+                            <KeyRound className="w-4 h-4" />
+                          </Button>
                           {bannedUsernames.has(acct.username) ? (
                             <Button variant="outline" size="sm" onClick={() => handleUnban(acct.username)}>
                               Unban
@@ -1033,13 +1264,24 @@ const AdminPanel = () => {
             {withOwner(
               <>
                 <Card>
-                  <CardContent className="py-3 text-xs text-muted-foreground">
-                    IP address recorded automatically each time someone signs in or creates an
-                    account (once per browser session).
+                  <CardContent className="py-3 space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      IP address recorded automatically when someone signs in or creates an account
+                      (refreshed every few hours while they're active).
+                    </p>
+                    <div className="relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search by username, email, or IP…"
+                        value={ipFilter}
+                        onChange={(e) => setIpFilter(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
                   </CardContent>
                 </Card>
                 <div className="space-y-2">
-                  {ips.slice(0, 100).map((row) => (
+                  {filteredIps.slice(0, 200).map((row) => (
                     <Card key={row._row_id}>
                       <CardContent className="py-3 space-y-1">
                         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1055,8 +1297,12 @@ const AdminPanel = () => {
                       </CardContent>
                     </Card>
                   ))}
-                  {ips.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No IP records yet.</p>
+                  {filteredIps.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      {ips.length === 0
+                        ? "No IP records yet — they appear the next time someone signs in."
+                        : "No records match that search."}
+                    </p>
                   )}
                 </div>
               </>
@@ -1266,6 +1512,113 @@ const AdminPanel = () => {
             )}
           </TabsContent>
 
+          {/* SETTINGS */}
+          <TabsContent value="settings" className="space-y-4 mt-4">
+            {withOwner(
+              <>
+                <Card>
+                  <CardContent className="py-3 text-xs text-muted-foreground">
+                    These settings control the live site — every change applies instantly to what
+                    your users see. {settingsLoaded ? "" : "Loading current values…"}
+                  </CardContent>
+                </Card>
+
+                {SETTING_GROUPS.map((group) => (
+                  <Card key={group}>
+                    <CardHeader>
+                      <CardTitle className="text-base">{group}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      {SETTING_DEFS.filter((def) => def.group === group).map((def) => (
+                        <div key={def.key} className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{def.label}</p>
+                            <p className="text-xs text-muted-foreground">{def.description}</p>
+                          </div>
+                          <div className="shrink-0">
+                            {def.type === "toggle" ? (
+                              <Switch
+                                checked={settings[def.key] === true}
+                                onCheckedChange={(v) => handleSettingChange(def.key, v)}
+                              />
+                            ) : def.type === "number" ? (
+                              <Input
+                                key={`${def.key}-${String(settings[def.key])}`}
+                                type="number"
+                                className="w-24"
+                                min={def.min}
+                                max={def.max}
+                                defaultValue={String(settings[def.key])}
+                                onBlur={(e) => {
+                                  const n = Number(e.target.value);
+                                  if (Number.isFinite(n) && n !== Number(settings[def.key])) {
+                                    handleSettingChange(def.key, n);
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <Input
+                                key={`${def.key}-${String(settings[def.key])}`}
+                                className="w-64 max-w-full"
+                                maxLength={300}
+                                defaultValue={String(settings[def.key])}
+                                placeholder={String(def.default)}
+                                onBlur={(e) => {
+                                  const v = e.target.value.trim();
+                                  if (v !== String(settings[def.key])) {
+                                    handleSettingChange(def.key, v);
+                                  }
+                                }}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ))}
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Message auto-clear</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      {purgeInfo
+                        ? `Last cleanup deleted ${purgeInfo.count} room message(s) at ${fmtTime(purgeInfo.at)}. Runs every hour.`
+                        : "The hourly cleanup hasn't run yet. Room messages older than your setting above will be cleared; private messages are never deleted."}
+                    </p>
+                    <Button variant="outline" onClick={handleRunPurgeNow} disabled={purgeBusy}>
+                      {purgeBusy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Eraser className="w-4 h-4 mr-2" />}
+                      Run cleanup now
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Recent owner actions</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {audit.map((row) => (
+                      <div key={row._row_id} className="text-sm border-b border-white/5 pb-2">
+                        <span className="font-medium capitalize">{row.action.replace(/_/g, " ")}</span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {row.target} · by {row.actor_email ?? "owner"}
+                        </span>
+                        <p className="text-xs text-muted-foreground">{fmtTime(Number(row._created_at))}</p>
+                      </div>
+                    ))}
+                    {audit.length === 0 && (
+                      <p className="text-sm text-muted-foreground">No owner actions recorded yet.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+
           {/* DOWNLOAD */}
           <TabsContent value="download" className="space-y-4 mt-4">
             <Card>
@@ -1291,6 +1644,79 @@ const AdminPanel = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* RESET PASSWORD DIALOG */}
+      <Dialog open={pwTarget !== null} onOpenChange={(open) => !open && setPwTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset @{pwTarget?.username}'s password</DialogTitle>
+            <DialogDescription>
+              Sets a brand-new password for this account. Their old password stops working
+              immediately. Use this to help someone who forgot theirs, or to take back an account.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New password</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="new-password"
+                  value={pwValue}
+                  onChange={(e) => setPwValue(e.target.value)}
+                  minLength={8}
+                  maxLength={128}
+                  className="font-mono"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setPwValue(suggestPassword())}
+                >
+                  Suggest
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">At least 8 characters.</p>
+            </div>
+            {pwDone && (
+              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-2">
+                <p className="text-sm">
+                  New password for <span className="font-semibold">@{pwTarget?.username}</span>:
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="font-mono text-sm bg-secondary px-2 py-1 rounded break-all">
+                    {pwDone}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(pwDone).then(
+                        () => toast({ title: "Copied" }),
+                        () => undefined
+                      );
+                    }}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Copy it somewhere safe — it's shown only once.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPwTarget(null)}>
+              Close
+            </Button>
+            <Button onClick={handleResetPassword} disabled={pwBusy || pwValue.length < 8}>
+              {pwBusy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <KeyRound className="w-4 h-4 mr-2" />}
+              Reset password
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

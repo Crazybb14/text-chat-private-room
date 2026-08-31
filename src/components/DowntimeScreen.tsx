@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import db from "@/lib/shared/kliv-database.js";
+import { settingText, useAppSettings } from "@/lib/appSettings";
 
 export interface DowntimeInfo {
   start: number;
@@ -47,6 +48,8 @@ const formatTime = (value: number) =>
 
 const DowntimeScreen = ({ info }: { info: DowntimeInfo }) => {
   const [now, setNow] = useState(Date.now());
+  const { settings } = useAppSettings();
+  const extraMessage = settingText(settings, "maintenance_message");
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -65,6 +68,9 @@ const DowntimeScreen = ({ info }: { info: DowntimeInfo }) => {
           DOWNTIME HAS BEEN ENABLED
         </h1>
         {info.reason && <p className="text-white/80 text-lg">{info.reason}</p>}
+        {extraMessage && (
+          <p className="text-white/50 text-sm max-w-md mx-auto break-words">{extraMessage}</p>
+        )}
         <div className="text-white/70 space-y-1">
           <p>From: {formatTime(info.start)}</p>
           <p>To: {formatTime(info.end)}</p>

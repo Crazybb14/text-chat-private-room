@@ -18,6 +18,7 @@ import {
   type ProfileRow,
 } from "@/lib/friends";
 import { Check, MessageSquare, RefreshCw, UserMinus, UserPlus, Users, X } from "lucide-react";
+import { settingBool, useAppSettings } from "@/lib/appSettings";
 
 interface FriendsDialogProps {
   open: boolean;
@@ -33,6 +34,9 @@ interface FriendEntry {
 const FriendsDialog = ({ open, onClose, username }: FriendsDialogProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { settings } = useAppSettings();
+  const friendsAllowed = settingBool(settings, "allow_friend_requests");
+  const dmsAllowed = settingBool(settings, "allow_direct_messages");
   const [friends, setFriends] = useState<FriendEntry[]>([]);
   const [incoming, setIncoming] = useState<FriendshipRow[]>([]);
   const [outgoing, setOutgoing] = useState<FriendshipRow[]>([]);
@@ -122,17 +126,23 @@ const FriendsDialog = ({ open, onClose, username }: FriendsDialogProps) => {
         </DialogHeader>
 
         {/* Add friend */}
-        <div className="flex gap-2">
-          <Input
-            placeholder="Add friend by username"
-            value={addName}
-            onChange={(e) => setAddName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          />
-          <Button size="sm" aria-label="Send friend request" onClick={handleAdd} disabled={busy || !addName.trim()}>
-            <UserPlus className="w-4 h-4" />
-          </Button>
-        </div>
+        {friendsAllowed ? (
+          <div className="flex gap-2">
+            <Input
+              placeholder="Add friend by username"
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            />
+            <Button size="sm" aria-label="Send friend request" onClick={handleAdd} disabled={busy || !addName.trim()}>
+              <UserPlus className="w-4 h-4" />
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Friend requests are turned off by the site admin right now.
+          </p>
+        )}
 
         {/* Incoming requests */}
         {incoming.length > 0 && (
@@ -206,9 +216,11 @@ const FriendsDialog = ({ open, onClose, username }: FriendsDialogProps) => {
                 </div>
               </div>
               <div className="flex gap-1 shrink-0">
-                <Button size="sm" variant="ghost" onClick={() => navigate(`/dm/${friend.username}`)}>
-                  <MessageSquare className="w-4 h-4" />
-                </Button>
+                {dmsAllowed && (
+                  <Button size="sm" variant="ghost" onClick={() => navigate(`/dm/${friend.username}`)}>
+                    <MessageSquare className="w-4 h-4" />
+                  </Button>
+                )}
                 <Button size="sm" variant="ghost" onClick={() => handleRemove(friend.username)} disabled={busy}>
                   <UserMinus className="w-4 h-4" />
                 </Button>

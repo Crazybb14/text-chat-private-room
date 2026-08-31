@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Ban as BanIcon,
+  Clock,
   Loader2,
   Lock,
+  Megaphone,
   Send,
   Users,
 } from "lucide-react";
@@ -21,6 +23,21 @@ import MessageBubble, { type ChatMessage } from "@/components/MessageBubble";
 import NotificationBell from "@/components/NotificationBell";
 import FriendsDialog from "@/components/FriendsDialog";
 import { getProfile, saveProfile } from "@/lib/friends";
+import {
+  filterMessage,
+  RateLimiter,
+  settingBool,
+  settingNumber,
+  settingText,
+  slowModeRemaining,
+  useAppSettings,
+} from "@/lib/appSettings";
+import {
+  getRoomPresence,
+  isPresenceOnline,
+  usePresenceHeartbeat,
+  type PresenceRow,
+} from "@/lib/presence";
 
 interface RoomRow {
   _row_id: number;
@@ -30,24 +47,15 @@ interface RoomRow {
   [key: string]: unknown;
 }
 
-interface OnlineUserRow {
-  _row_id: number;
-  username: string;
-  device_id: string;
-  room_id: number | null;
-  last_seen: string;
-  [key: string]: unknown;
-}
-
 type Phase = "loading" | "banned" | "gate" | "ready" | "notfound";
 
-const PRESENCE_WINDOW_MS = 5 * 60 * 1000;
 const TYPING_WINDOW_MS = 8 * 1000;
 
 const ChatRoom = () => {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { settings } = useAppSettings();
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [room, setRoom] = useState<RoomRow | null>(null);
@@ -57,15 +65,38 @@ const ChatRoom = () => {
   const [sending, setSending] = useState(false);
   const [codeInput, setCodeInput] = useState("");
   const [codeChecking, setCodeChecking] = useState(false);
-  const [onlineNames, setOnlineNames] = useState<string[]>([]);
+  const [presenceRows, setPresenceRows] = useState<PresenceRow[]>([]);
   const [typingNames, setTypingNames] = useState<string[]>([]);
   const [avatars, setAvatars] = useState<Record<string, string>>({});
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const [tick, setTick] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const messageCountRef = useRef(0);
   const typingRowRef = useRef<number | null>(null);
   const typingSentAtRef = useRef(0);
+  const lastSentAtRef = useRef(0);
+
+  const maxMessageLength = Math.max(50, settingNumber(settings, "max_message_length") || 2000);
+  const slowModeSeconds = settingNumber(settings, "slow_mode_seconds");
+  const typingOn = settingBool(settings, "typing_indicators");
+  const showOnline = settingBool(settings, "show_online_status");
+  const announcement = settingText(settings, "announcement");
+  const autoDeleteHours = settingNumber(settings, "auto_delete_hours");
+
+  const rateLimiter = useMemo(
+    () => new RateLimiter(settingNumber(settings, "message_rate_per_minute") || 30),
+    [settings]
+  );
+
+  // Fresh heartbeat the whole time the user is in the room
+  usePresenceHeartbeat(username, roomId ? Number(roomId) : null);
+
+  // Re-render once a second so slow-mode countdowns stay accurate
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const loadMessages = useCallback(async () => {
     if (!roomId) return;
@@ -91,54 +122,22 @@ const ChatRoom = () => {
     }
   }, [roomId]);
 
-  const updatePresence = useCallback(async () => {
-    if (!roomId || !username) return;
-    try {
-      const deviceId = getDeviceId();
-      const rows = await db.query<OnlineUserRow>("online_users", {
-        device_id: `eq.${deviceId}`,
-      });
-      if (rows.length > 0) {
-        await db.update(
-          "online_users",
-          { device_id: `eq.${deviceId}` },
-          { username, room_id: Number(roomId), last_seen: new Date().toISOString() }
-        );
-      } else {
-        await db.insert("online_users", {
-          username,
-          device_id: deviceId,
-          room_id: Number(roomId),
-          last_seen: new Date().toISOString(),
-        });
-      }
-    } catch {
-      // presence is best-effort
-    }
-  }, [roomId, username]);
-
-  const loadOnline = useCallback(async () => {
+  const loadPresence = useCallback(async () => {
     if (!roomId) return;
-    try {
-      const rows = await db.query<OnlineUserRow>("online_users", {
-        room_id: `eq.${roomId}`,
-      });
-      const cutoff = Date.now() - PRESENCE_WINDOW_MS;
-      const names: string[] = [];
-      for (const row of rows) {
-        const seen = new Date(row.last_seen.replace(" ", "T")).getTime();
-        if (!Number.isNaN(seen) && seen >= cutoff && !names.includes(row.username)) {
-          names.push(row.username);
-        }
-      }
-      setOnlineNames(names);
-    } catch {
-      // best-effort
-    }
+    setPresenceRows(await getRoomPresence(Number(roomId)));
   }, [roomId]);
 
+  const onlineNames = useMemo(() => {
+    const now = Date.now();
+    const names: string[] = [];
+    for (const row of presenceRows) {
+      if (isPresenceOnline(row, now) && !names.includes(row.username)) names.push(row.username);
+    }
+    return names;
+  }, [presenceRows, tick]);
+
   const loadTyping = useCallback(async () => {
-    if (!roomId || !username) return;
+    if (!roomId || !username || !typingOn) return;
     try {
       const rows = await db.query<{ username: string; draft: string; updated_at: number }>(
         "typing_status",
@@ -153,12 +152,12 @@ const ChatRoom = () => {
     } catch {
       // best-effort
     }
-  }, [roomId, username]);
+  }, [roomId, username, typingOn]);
 
   /** Shares what the user is currently typing (throttled) so admins can watch live. */
   const syncTyping = useCallback(
     async (draft: string, force = false) => {
-      if (!roomId || !username) return;
+      if (!roomId || !username || !typingOn) return;
       const now = Date.now();
       if (!force && now - typingSentAtRef.current < 1500) return;
       typingSentAtRef.current = now;
@@ -187,7 +186,7 @@ const ChatRoom = () => {
         // best-effort
       }
     },
-    [roomId, username]
+    [roomId, username, typingOn]
   );
 
   // Initial load
@@ -240,21 +239,18 @@ const ChatRoom = () => {
   useEffect(() => {
     if (phase !== "ready") return;
     loadMessages();
-    loadOnline();
+    loadPresence();
     loadTyping();
-    updatePresence();
     const messageTimer = setInterval(loadMessages, 2000);
     const typingTimer = setInterval(loadTyping, 2000);
-    const presenceTimer = setInterval(updatePresence, 15000);
-    const onlineTimer = setInterval(loadOnline, 20000);
+    const presenceTimer = setInterval(loadPresence, 20000);
     return () => {
       clearInterval(messageTimer);
       clearInterval(typingTimer);
       clearInterval(presenceTimer);
-      clearInterval(onlineTimer);
       syncTyping("", true);
     };
-  }, [phase, loadMessages, loadOnline, loadTyping, updatePresence, syncTyping]);
+  }, [phase, loadMessages, loadPresence, loadTyping, syncTyping]);
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
@@ -289,15 +285,36 @@ const ChatRoom = () => {
     e?.preventDefault();
     const content = input.trim();
     if (!content || !roomId || !username) return;
+
+    const slowLeft = slowModeRemaining(lastSentAtRef.current, slowModeSeconds);
+    if (slowLeft > 0) {
+      toast({
+        title: "Slow mode is on",
+        description: `Wait ${Math.ceil(slowLeft / 1000)}s before sending again.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!rateLimiter.allow()) {
+      toast({
+        title: "You're sending too fast",
+        description: "Give it a few seconds.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSending(true);
     try {
       await db.insert("messages", {
         room_id: Number(roomId),
         sender_name: username,
-        content: content.slice(0, 2000),
+        content: filterMessage(content.slice(0, maxMessageLength), settings),
         device_id: getDeviceId(),
         is_ai: 0,
       });
+      lastSentAtRef.current = Date.now();
+      rateLimiter.record();
       setInput("");
       syncTyping("", true);
       await loadMessages();
@@ -322,7 +339,7 @@ const ChatRoom = () => {
         <div className="max-w-md text-center space-y-6">
           <BanIcon className="w-16 h-16 text-red-500 mx-auto" />
           <h1 className="text-3xl font-bold">You're banned</h1>
-          <p className="text-white/70">Your account has been banned from ChatRooms.</p>
+          <p className="text-white/70">Your account has been banned from this site.</p>
           <Button variant="destructive" onClick={() => navigate("/appeal")}>
             Submit an appeal
           </Button>
@@ -380,6 +397,9 @@ const ChatRoom = () => {
     );
   }
 
+  const slowLeft = slowModeRemaining(lastSentAtRef.current, slowModeSeconds);
+  const charsLeft = maxMessageLength - input.length;
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <header className="border-b border-white/5 shrink-0">
@@ -388,6 +408,9 @@ const ChatRoom = () => {
             <Button variant="ghost" size="icon" aria-label="Back to rooms" onClick={() => navigate("/")} title="Back to rooms">
               <ArrowLeft className="w-5 h-5" />
             </Button>
+            <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+              <span className="font-bold text-primary">{room.name.charAt(0).toUpperCase()}</span>
+            </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="font-bold truncate">{room.name}</h1>
@@ -397,12 +420,19 @@ const ChatRoom = () => {
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {onlineNames.length} online
-                {onlineNames.length > 0 && username ? ` — ${onlineNames.join(", ")}` : ""}
-              </p>
-              {typingNames.length > 0 && (
-                <p className="text-xs text-primary/80 truncate">
+              {showOnline && (
+                <p className="text-xs text-muted-foreground truncate">
+                  {onlineNames.length} online
+                  {onlineNames.length > 0 && username ? ` — ${onlineNames.join(", ")}` : ""}
+                </p>
+              )}
+              {typingOn && typingNames.length > 0 && (
+                <p className="text-xs text-primary/80 truncate flex items-center gap-1">
+                  <span className="inline-flex gap-0.5">
+                    <span className="w-1 h-1 rounded-full bg-primary animate-bounce" />
+                    <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-delay:0.15s]" />
+                    <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-delay:0.3s]" />
+                  </span>
                   {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…
                 </p>
               )}
@@ -417,7 +447,16 @@ const ChatRoom = () => {
         </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      {announcement && (
+        <div className="shrink-0 border-b border-primary/20 bg-primary/5">
+          <div className="max-w-4xl mx-auto px-4 py-2 flex items-start gap-2">
+            <Megaphone className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+            <p className="text-xs break-words">{announcement}</p>
+          </div>
+        </div>
+      )}
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
         <div className="max-w-4xl mx-auto px-4 py-4">
           {messages.length === 0 && (
             <div className="text-center py-16 text-muted-foreground text-sm">
@@ -438,23 +477,43 @@ const ChatRoom = () => {
       </div>
 
       <div className="border-t border-white/5 shrink-0">
-        <form onSubmit={handleSend} className="max-w-4xl mx-auto px-4 py-3 flex gap-2">
-          <Input
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              syncTyping(e.target.value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder={`Message ${room.name}...`}
-            maxLength={2000}
-          />
-          <Button type="submit" size="icon" disabled={sending || !input.trim()}>
+        <form onSubmit={handleSend} className="max-w-4xl mx-auto px-4 pt-3 pb-2 flex gap-2">
+          <div className="flex-1 min-w-0 space-y-1">
+            <Input
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                syncTyping(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={slowLeft > 0 ? `Slow mode — wait ${Math.ceil(slowLeft / 1000)}s…` : `Message ${room.name}...`}
+              maxLength={maxMessageLength}
+              disabled={slowLeft > 0}
+            />
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>
+                {charsLeft <= 100 && `${charsLeft} characters left`}
+                {autoDeleteHours > 0 && (
+                  <span className="inline-flex items-center gap-1">
+                    {charsLeft <= 100 && " · "}
+                    <Clock className="w-3 h-3" /> auto-clears after {autoDeleteHours}h
+                  </span>
+                )}
+              </span>
+              <span>Enter to send</span>
+            </div>
+          </div>
+          <Button
+            type="submit"
+            size="icon"
+            className="h-10 self-start mt-0.5"
+            disabled={sending || !input.trim() || slowLeft > 0}
+          >
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </form>

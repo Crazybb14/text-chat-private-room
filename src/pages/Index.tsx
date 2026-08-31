@@ -2,14 +2,19 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Ban as BanIcon,
+  Clock,
   Lightbulb,
   Loader2,
   Lock,
+  LogIn,
   LogOut,
+  Megaphone,
   MessageSquare,
   Plus,
+  Search,
   Settings as SettingsIcon,
   Shield,
+  UserPlus,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +29,17 @@ import UserManager, { type SessionInfo } from "@/lib/userManagement";
 import NotificationBell from "@/components/NotificationBell";
 import FriendsDialog from "@/components/FriendsDialog";
 import DowntimeScreen, { getActiveDowntime, type DowntimeInfo } from "@/components/DowntimeScreen";
+import {
+  settingBool,
+  settingNumber,
+  settingText,
+  useAppSettings,
+} from "@/lib/appSettings";
+import {
+  isPresenceOnline,
+  usePresenceHeartbeat,
+  type PresenceRow,
+} from "@/lib/presence";
 
 interface RoomRow {
   _row_id: number;
@@ -45,9 +61,12 @@ const generateRoomCode = () => {
 const Index = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { settings } = useAppSettings();
   const [phase, setPhase] = useState<Phase>("loading");
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [rooms, setRooms] = useState<RoomRow[]>([]);
+  const [presence, setPresence] = useState<PresenceRow[]>([]);
+  const [roomSearch, setRoomSearch] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [joining, setJoining] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -64,10 +83,27 @@ const Index = () => {
 
   const username = session?.username ?? null;
 
+  // Keep this user's online status fresh everywhere, not just inside rooms
+  usePresenceHeartbeat(username);
+
+  const allowRoomCreation = settingBool(settings, "allow_room_creation");
+  const allowPrivateRooms = settingBool(settings, "allow_private_rooms");
+  const siteName = settingText(settings, "site_name") || "ChatRooms";
+  const welcomeMessage = settingText(settings, "welcome_message");
+  const announcement = settingText(settings, "announcement");
+  const autoDeleteHours = settingNumber(settings, "auto_delete_hours");
+  const maxRoomsPerUser = settingNumber(settings, "max_rooms_per_user");
+  const roomNameMax = settingNumber(settings, "room_name_max_length") || 60;
+  const showOnline = settingBool(settings, "show_online_status");
+
   const loadRooms = useCallback(async () => {
     try {
-      const rows = await db.query<RoomRow>("rooms", { order: "_row_id.asc" });
-      setRooms(rows);
+      const [roomRows, presenceRows] = await Promise.all([
+        db.query<RoomRow>("rooms", { order: "_row_id.asc" }),
+        db.query<PresenceRow>("online_users", { order: "last_seen.desc" }),
+      ]);
+      setRooms(roomRows);
+      setPresence(presenceRows);
     } catch (error) {
       console.error("Failed to load rooms:", error);
     }
@@ -85,6 +121,9 @@ const Index = () => {
         return;
       }
       setSession(currentSession);
+
+      // Refresh the visitor's IP record for the admin panel (self-throttled)
+      void UserManager.logLoginIp(currentSession.username);
 
       const down = await getActiveDowntime();
       if (down) {
@@ -114,7 +153,7 @@ const Index = () => {
     init();
   }, [navigate, loadRooms]);
 
-  // Poll for downtime while the site is usable
+  // Poll for downtime + refresh rooms/presence while the site is usable
   useEffect(() => {
     if (phase !== "ready") return;
     const interval = setInterval(async () => {
@@ -122,10 +161,12 @@ const Index = () => {
       if (down) {
         setDowntime(down);
         setPhase("downtime");
+        return;
       }
+      loadRooms();
     }, 30000);
     return () => clearInterval(interval);
-  }, [phase]);
+  }, [phase, loadRooms]);
 
   const handleSaveUsername = async (e: FormEvent) => {
     e.preventDefault();
@@ -162,6 +203,10 @@ const Index = () => {
   };
 
   const handleSignOut = async () => {
+    if (username) {
+      const { markOffline } = await import("@/lib/presence");
+      await markOffline(username);
+    }
     await UserManager.signOut();
     navigate("/login", { replace: true });
   };
@@ -186,9 +231,30 @@ const Index = () => {
   const handleCreateRoom = async () => {
     const name = newRoomName.trim();
     if (!name) return;
+    if (name.length > roomNameMax) {
+      toast({
+        title: "Room name too long",
+        description: `Keep it under ${roomNameMax} characters.`,
+        variant: "destructive",
+      });
+      return;
+    }
     setCreating(true);
     try {
-      const type = newRoomType === "private" ? "private" : "public";
+      if (session) {
+        const mine = await db.query<RoomRow>("rooms", {
+          _created_by: `eq.${session.userUuid}`,
+        });
+        if (mine.length >= maxRoomsPerUser) {
+          toast({
+            title: "Room limit reached",
+            description: `You've already created ${mine.length} rooms. Ask an admin if you need more.`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+      const type = newRoomType === "private" && allowPrivateRooms ? "private" : "public";
       const code = type === "private" ? generateRoomCode() : null;
       const created = await db.insertOne<RoomRow>("rooms", { name, code, type });
       toast({
@@ -225,7 +291,7 @@ const Index = () => {
           <BanIcon className="w-16 h-16 text-red-500 mx-auto" />
           <h1 className="text-3xl font-bold">You're banned</h1>
           <p className="text-white/70">
-            Your account has been banned from ChatRooms. If you believe this is a mistake, you can
+            Your account has been banned from {siteName}. If you believe this is a mistake, you can
             submit an appeal.
           </p>
           <Button variant="destructive" onClick={() => navigate("/appeal")}>
@@ -280,22 +346,39 @@ const Index = () => {
     );
   }
 
+  const now = Date.now();
   const publicRooms = rooms.filter((r) => r.type !== "private");
   const privateRooms = rooms.filter((r) => r.type === "private");
+  const onlineCount = new Set(
+    presence.filter((p) => isPresenceOnline(p, now)).map((p) => p.username)
+  ).size;
+  const roomOnline = (roomId: number) =>
+    presence.filter((p) => Number(p.room_id) === roomId && isPresenceOnline(p, now)).length;
+
+  const search = roomSearch.trim().toLowerCase();
+  const visiblePublicRooms = search
+    ? publicRooms.filter((r) => r.name.toLowerCase().includes(search))
+    : publicRooms;
 
   return (
     <div className="min-h-screen bg-background">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-background pointer-events-none" />
 
-      <header className="relative z-10 border-b border-white/5">
+      <header className="relative z-10 border-b border-white/5 sticky top-0 bg-background/80 backdrop-blur">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center">
               <MessageSquare className="w-5 h-5 text-primary" />
             </div>
-            <span className="font-bold text-lg">ChatRooms</span>
+            <span className="font-bold text-lg">{siteName}</span>
           </div>
           <div className="flex items-center gap-1">
+            {showOnline && onlineCount > 0 && (
+              <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground mr-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                {onlineCount} online
+              </span>
+            )}
             <NotificationBell username={username || ""} />
             <Button variant="ghost" size="icon" aria-label="Friends" title="Friends" onClick={() => setFriendsOpen(true)}>
               <Users className="w-5 h-5" />
@@ -314,89 +397,149 @@ const Index = () => {
       </header>
 
       <main className="relative z-10 max-w-5xl mx-auto px-4 py-8 space-y-8">
-        <div className="flex items-end justify-between gap-4">
+        {announcement && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="py-3.5 flex items-start gap-3">
+              <Megaphone className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+              <p className="text-sm break-words">{announcement}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold">Hey, {username}</h1>
-            <p className="text-muted-foreground text-sm">Pick a room and start chatting.</p>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Hey, <span className="text-primary">{username}</span>
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              {welcomeMessage || "Pick a room and start chatting."}
+            </p>
+            {autoDeleteHours > 0 && (
+              <p className="text-muted-foreground text-xs mt-2 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                Room messages auto-clear after {autoDeleteHours}h — private messages stay forever.
+              </p>
+            )}
           </div>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" /> New room
-          </Button>
+          {allowRoomCreation && (
+            <Button onClick={() => setCreateOpen(true)} size="lg">
+              <Plus className="w-4 h-4 mr-2" /> New room
+            </Button>
+          )}
         </div>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase text-muted-foreground flex items-center gap-2">
-            <MessageSquare className="w-4 h-4" /> Public rooms
-          </h2>
-          {publicRooms.length === 0 && (
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase text-muted-foreground flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" /> Public rooms
+            </h2>
+            {publicRooms.length > 6 && (
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search rooms…"
+                  value={roomSearch}
+                  onChange={(e) => setRoomSearch(e.target.value)}
+                  className="pl-9 w-48 h-8"
+                />
+              </div>
+            )}
+          </div>
+          {visiblePublicRooms.length === 0 && (
             <Card>
-              <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                No public rooms yet — create the first one!
+              <CardContent className="py-10 text-center text-muted-foreground text-sm">
+                {publicRooms.length === 0
+                  ? allowRoomCreation
+                    ? "No public rooms yet — create the first one!"
+                    : "No public rooms yet."
+                  : "No rooms match that search."}
               </CardContent>
             </Card>
           )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {publicRooms.map((room) => (
-              <Card
-                key={room._row_id}
-                className="cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => navigate(`/chat/${room._row_id}`)}
-              >
-                <CardContent className="flex items-center gap-3 py-4">
-                  <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
-                    <MessageSquare className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold truncate">{room.name}</p>
-                    <p className="text-xs text-muted-foreground">Public room</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {visiblePublicRooms.map((room) => {
+              const online = showOnline ? roomOnline(room._row_id) : 0;
+              return (
+                <Card
+                  key={room._row_id}
+                  className="cursor-pointer hover:border-primary/50 hover:-translate-y-0.5 transition-all group"
+                  onClick={() => navigate(`/chat/${room._row_id}`)}
+                >
+                  <CardContent className="flex items-center gap-3 py-4">
+                    <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0 group-hover:bg-primary/25 transition-colors">
+                      <MessageSquare className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{room.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {showOnline && online > 0 ? (
+                          <span className="text-emerald-500 inline-flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            {online} online
+                          </span>
+                        ) : (
+                          "Public room"
+                        )}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardContent className="py-5 space-y-3">
-              <h3 className="font-semibold flex items-center gap-2 text-sm">
-                <Lock className="w-4 h-4" /> Join a private room
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                {privateRooms.length > 0
-                  ? "Enter the code the room owner shared with you."
-                  : "Enter a code the room owner shared with you."}
-              </p>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Room code"
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => e.key === "Enter" && handleJoinByCode()}
-                  maxLength={12}
-                  className="uppercase font-mono tracking-widest"
-                />
-                <Button onClick={handleJoinByCode} disabled={joining || !joinCode.trim()}>
-                  {joining ? <Loader2 className="w-4 h-4 animate-spin" /> : "Join"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        {allowPrivateRooms && (
+          <section className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardContent className="py-5 space-y-3">
+                <h3 className="font-semibold flex items-center gap-2 text-sm">
+                  <Lock className="w-4 h-4" /> Join a private room
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {privateRooms.length > 0
+                    ? `${privateRooms.length} private room${privateRooms.length === 1 ? "" : "s"} exist — enter the code the owner shared with you.`
+                    : "Enter a code the room owner shared with you."}
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Room code"
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => e.key === "Enter" && handleJoinByCode()}
+                    maxLength={12}
+                    className="uppercase font-mono tracking-widest"
+                  />
+                  <Button onClick={handleJoinByCode} disabled={joining || !joinCode.trim()}>
+                    {joining ? <Loader2 className="w-4 h-4 animate-spin" /> : "Join"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="py-5 space-y-3">
-              <h3 className="font-semibold flex items-center gap-2 text-sm">
-                <Users className="w-4 h-4" /> Your own room
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Make a public room anyone can join, or a private room that needs a code.
-              </p>
-              <Button variant="outline" onClick={() => setCreateOpen(true)}>
-                <Plus className="w-4 h-4 mr-2" /> Create a room
-              </Button>
-            </CardContent>
-          </Card>
-        </section>
+            {allowRoomCreation && (
+              <Card>
+                <CardContent className="py-5 space-y-3">
+                  <h3 className="font-semibold flex items-center gap-2 text-sm">
+                    <UserPlus className="w-4 h-4" /> Your own room
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Make a public room anyone can join, or a private room that needs a code.
+                  </p>
+                  <Button variant="outline" onClick={() => setCreateOpen(true)}>
+                    <Plus className="w-4 h-4 mr-2" /> Create a room
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </section>
+        )}
+
+        {!allowRoomCreation && (
+          <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1.5">
+            <LogIn className="w-3.5 h-3.5" /> Room creation is currently turned off by the site admin.
+          </p>
+        )}
       </main>
 
       <footer className="relative z-10 border-t border-white/5 py-4">
@@ -427,27 +570,32 @@ const Index = () => {
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleCreateRoom()}
-                maxLength={60}
+                maxLength={roomNameMax}
               />
+              <p className="text-xs text-muted-foreground">
+                {newRoomName.length}/{roomNameMax}
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label>Room type</Label>
-              <Select value={newRoomType} onValueChange={setNewRoomType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="public">Public — anyone can join</SelectItem>
-                  <SelectItem value="private">Private — join code required</SelectItem>
-                </SelectContent>
-              </Select>
-              {newRoomType === "private" && (
-                <p className="text-xs text-muted-foreground">
-                  A 6-character code will be generated — share it with the people you want in the
-                  room.
-                </p>
-              )}
-            </div>
+            {allowPrivateRooms && (
+              <div className="space-y-2">
+                <Label>Room type</Label>
+                <Select value={newRoomType} onValueChange={setNewRoomType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="public">Public — anyone can join</SelectItem>
+                    <SelectItem value="private">Private — join code required</SelectItem>
+                  </SelectContent>
+                </Select>
+                {newRoomType === "private" && (
+                  <p className="text-xs text-muted-foreground">
+                    A 6-character code will be generated — share it with the people you want in the
+                    room.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
