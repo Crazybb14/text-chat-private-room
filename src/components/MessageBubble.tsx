@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import UsernameClickMenu from "./UsernameClickMenu";
-import { fileKind, formatBytes } from "@/lib/chatFiles";
-import { Download, File as FileIcon, FileText, Image as ImageIcon } from "lucide-react";
+import { fileKind, formatBytes, isFileApproved } from "@/lib/dmFiles";
+import { Clock, Download, File as FileIcon, FileText, Image as ImageIcon } from "lucide-react";
 
 export interface ChatMessage {
   _row_id: number;
@@ -13,6 +13,7 @@ export interface ChatMessage {
   file_name?: string | null;
   file_size?: number | null;
   mime_type?: string | null;
+  file_status?: string | null;
   [key: string]: unknown;
 }
 
@@ -85,6 +86,28 @@ const FileAttachment = ({ message }: { message: ChatMessage }) => {
   );
 };
 
+/** A file that hasn't been approved yet — shown only to the person who sent it. */
+const PendingAttachment = ({ message }: { message: ChatMessage }) => {
+  const name = message.file_name || "file";
+  const size =
+    typeof message.file_size === "number" && message.file_size > 0
+      ? formatBytes(message.file_size)
+      : null;
+  return (
+    <div className="flex items-center gap-3 min-w-[180px] py-1 pr-2">
+      <span className="w-10 h-10 rounded-xl bg-black/15 flex items-center justify-center shrink-0">
+        <Clock className="w-5 h-5" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium truncate">{name}</span>
+        <span className="block text-xs opacity-70">
+          {size ? `${size} · ` : ""}waiting for admin approval
+        </span>
+      </span>
+    </div>
+  );
+};
+
 const MessageBubble = ({
   message,
   isOwn,
@@ -100,6 +123,11 @@ const MessageBubble = ({
   });
   const initial = (message.sender_name || "?").charAt(0).toUpperCase();
   const hue = usernameHue(message.sender_name || "x");
+  const hasFile = Boolean(message.file_path);
+  const filePending = hasFile && !isFileApproved(message.file_status);
+
+  // Nobody but the sender sees a file until an admin approves it.
+  if (filePending && !isOwn) return null;
 
   return (
     <div className={`flex items-end gap-2 ${compact ? "mb-1.5" : "mb-3"} ${isOwn ? "flex-row-reverse" : ""}`}>
@@ -129,10 +157,16 @@ const MessageBubble = ({
             isOwn
               ? "bg-primary text-primary-foreground rounded-br-md"
               : "bg-secondary text-secondary-foreground rounded-bl-md"
-          } ${message.file_path ? "p-2" : "whitespace-pre-wrap"}`}
+          } ${hasFile ? "p-2" : "whitespace-pre-wrap"}`}
         >
-          {message.file_path ? <FileAttachment message={message} /> : message.content}
-          {message.file_path && message.content ? (
+          {filePending ? (
+            <PendingAttachment message={message} />
+          ) : hasFile ? (
+            <FileAttachment message={message} />
+          ) : (
+            message.content
+          )}
+          {hasFile && message.content ? (
             <p className="whitespace-pre-wrap px-2 pb-1 text-sm">{message.content}</p>
           ) : null}
         </div>

@@ -1,6 +1,6 @@
 import db from "@/lib/shared/kliv-database.js";
 import { content } from "@/lib/shared/kliv-content.js";
-import { fileKind, formatBytes } from "./dmFiles";
+import { FILE_STATUS_PENDING, fileKind, formatBytes } from "./dmFiles";
 
 export { fileKind, formatBytes };
 
@@ -19,6 +19,7 @@ export interface RoomFileMessage {
   file_name: string | null;
   file_size: number | null;
   mime_type: string | null;
+  file_status?: string | null;
   _created_at: number;
   [key: string]: unknown;
 }
@@ -39,7 +40,8 @@ export function validateChatFile(file: File): ChatFileValidation {
   return { ok: true };
 }
 
-/** Uploads a file for a room and posts it into the message feed as an attachment. */
+/** Uploads a file for a room and posts it into the message feed as an
+ *  attachment. It stays hidden from everyone else until an admin approves it. */
 export async function uploadRoomFile(
   roomId: number,
   file: File,
@@ -59,5 +61,6 @@ export async function uploadRoomFile(
     file_name: file.name.slice(0, 200),
     file_size: file.size,
     mime_type: file.type || "",
+    file_status: FILE_STATUS_PENDING,
   });
 }

@@ -590,7 +590,7 @@ const Index = () => {
 
       <Dialog open={friendsOpen} onOpenChange={setFriendsOpen}>
         <DialogContent className="max-w-md">
-          <FriendsDialog currentUsername={username || null} onOpenDirectMessage={(targetUsername) => navigate(`/direct-message/${targetUsername}`)} />
+          <FriendsDialog currentUsername={username || null} onOpenDirectMessage={(targetUsername) => navigate(`/dm/${targetUsername}`)} />
         </DialogContent>
       </Dialog>
       <PermissionPrompt />

@@ -394,7 +394,10 @@ const ChatRoom = () => {
       await uploadRoomFile(Number(roomId), file, username, (pct) => setUploadPct(pct));
       syncTyping("", true);
       await loadMessages();
-      toast({ title: "File shared", description: file.name });
+      toast({
+        title: "File sent for review",
+        description: `${file.name} becomes visible to everyone once an admin approves it.`,
+      });
     } catch {
       toast({ title: "Upload failed", description: "Please try again.", variant: "destructive" });
     } finally {
@@ -691,7 +694,7 @@ const ChatRoom = () => {
 
       <Dialog open={friendsOpen} onOpenChange={setFriendsOpen}>
         <DialogContent className="max-w-md">
-          <FriendsDialog currentUsername={username || null} onOpenDirectMessage={(targetUsername) => navigate(`/direct-message/${targetUsername}`)} />
+          <FriendsDialog currentUsername={username || null} onOpenDirectMessage={(targetUsername) => navigate(`/dm/${targetUsername}`)} />
         </DialogContent>
       </Dialog>
     </div>

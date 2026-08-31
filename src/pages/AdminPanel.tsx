@@ -76,6 +76,7 @@ import {
 } from "@/lib/calls";
 import { isOwnerSession } from "@/lib/owner";
 import AdminDirectMessages from "@/components/AdminDirectMessages";
+import AdminFiles from "@/components/AdminFiles";
 import AdminNotifications from "@/components/AdminNotifications";
 import AdminManagers, { MakeAdminDialog } from "@/components/AdminManagers";
 import AdminAI from "@/components/AdminAI";
@@ -874,6 +875,7 @@ const AdminPanel = () => {
               </TabsTrigger>
             )}
             {can("messages") && <TabsTrigger value="messages">Messages</TabsTrigger>}
+            {can("files") && <TabsTrigger value="files">Files</TabsTrigger>}
             {can("dms") && <TabsTrigger value="dms">Direct Messages</TabsTrigger>}
             {can("accounts") && <TabsTrigger value="accounts">Accounts</TabsTrigger>}
             {can("admins") && <TabsTrigger value="admins">Admins</TabsTrigger>}
@@ -1856,6 +1858,11 @@ const AdminPanel = () => {
                 </Card>
               </>
             )}
+          </TabsContent>
+
+          {/* FILES */}
+          <TabsContent value="files" className="space-y-4 mt-4">
+            {can("files") ? <AdminFiles /> : NoPermission}
           </TabsContent>
 
           {/* DIRECT MESSAGES */}

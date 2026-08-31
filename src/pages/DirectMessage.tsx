@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "r
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  Clock,
   Download,
   FileText,
   Loader2,
@@ -42,6 +43,7 @@ import {
   fileKind,
   formatBytes,
   getDmFiles,
+  isFileApproved,
   uploadDmFile,
   validateDmFile,
   type DmFileRow,
@@ -133,6 +135,17 @@ const FileCard = ({ row, isOwn }: { row: DmFileRow; isOwn: boolean }) => {
     </a>
   );
 };
+
+/** A file still waiting on an admin — only the sender sees this. */
+const PendingFileChip = ({ row }: { row: DmFileRow }) => (
+  <div className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 max-w-[320px]">
+    <Clock className="w-5 h-5 text-amber-400 shrink-0" />
+    <span className="min-w-0">
+      <span className="block text-sm font-medium truncate">{row.file_name}</span>
+      <span className="block text-xs text-muted-foreground">Waiting for admin approval</span>
+    </span>
+  </div>
+);
 
 const DirectMessage = () => {
   const { username: rawUsername } = useParams<{ username: string }>();
@@ -292,7 +305,10 @@ const DirectMessage = () => {
     try {
       await uploadDmFile(file, me, target, (pct) => setUploading({ name: file.name, pct }));
       await load();
-      toast({ title: "File shared", description: file.name });
+      toast({
+        title: "File sent for review",
+        description: `${file.name} shows up for ${target} once an admin approves it.`,
+      });
     } catch {
       toast({ title: "Upload failed", description: "Please try again.", variant: "destructive" });
     } finally {
@@ -406,8 +422,8 @@ const DirectMessage = () => {
 
           <div className="text-center py-6 text-muted-foreground text-xs">
             <Lock className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />
-            Private conversation — files shared here are only between you two. Any file type up to
-            500 MB.
+            Private conversation — every file shared here is checked by a moderator before
+            the other person can see it. Any file type up to 500 MB.
           </div>
 
           {timeline.length === 0 && (
@@ -428,7 +444,11 @@ const DirectMessage = () => {
                 className={`flex ${prefs.compact ? "mb-1.5" : "mb-3"} ${isOwn ? "justify-end" : "justify-start"}`}
               >
                 {item.kind === "file" ? (
-                  <FileCard row={item.row} isOwn={isOwn} />
+                  isFileApproved(item.row.status) ? (
+                    <FileCard row={item.row} isOwn={isOwn} />
+                  ) : isOwn ? (
+                    <PendingFileChip row={item.row} />
+                  ) : null
                 ) : (
                   <div className="max-w-[75%] flex flex-col">
                     <div

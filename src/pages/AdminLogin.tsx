@@ -1,6 +1,6 @@
-import { useState, type FormEvent, useEffect } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, User, Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
+import { Shield, Eye, EyeOff, Loader2, ArrowRight, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,45 +10,115 @@ import { useToast } from "@/hooks/use-toast";
 import auth from "@/lib/shared/kliv-auth.js";
 import UserManager from "@/lib/userManagement";
 import { functions } from "@/lib/shared/kliv-functions.js";
+import { allPermissions, parsePermissions, saveAdminSession } from "@/lib/adminAccounts";
+
+type StaffLoginResult = {
+  ok?: boolean;
+  invite?: boolean;
+  error?: string;
+  permissions?: Record<string, boolean>;
+};
 
 const AdminLogin = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [mode, setMode] = useState<"account" | "owner">("account");
+  const [mode, setMode] = useState<"staff" | "owner">("staff");
   const [loading, setLoading] = useState(false);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+
+  // Admin sign-in (staff accounts the owner invited)
+  const [staffName, setStaffName] = useState("");
+  const [staffPassword, setStaffPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [session, setSession] = useState<Awaited<ReturnType<typeof UserManager.getSession>> | null>(null);
+  const [inviteMode, setInviteMode] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  useEffect(() => {
-    UserManager.getSession().then(setSession);
-  }, []);
+  // Owner sign-in
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [showOwnerPassword, setShowOwnerPassword] = useState(false);
 
-  const handleAccountSignIn = async () => {
-    if (!session?.username) {
-      toast({ title: "Not signed in", description: "Sign into your account first.", variant: "destructive" });
+  const enterPanel = (username: string, permissions: Record<string, boolean>) => {
+    saveAdminSession({ username, permissions });
+    localStorage.setItem("isAdmin", "true");
+    navigate("/admin/panel", { replace: true });
+  };
+
+  const staffLogin = async (
+    username: string,
+    password: string
+  ): Promise<"ok" | "invite" | "fail"> => {
+    try {
+      const result = (await functions.post("staff-auth", {
+        action: "login",
+        username,
+        password,
+      })) as StaffLoginResult;
+      if (result.ok) {
+        enterPanel(username, parsePermissions(result.permissions));
+        return "ok";
+      }
+      if (result.invite) {
+        setInviteMode(true);
+        return "invite";
+      }
+      toast({
+        title: "Sign-in failed",
+        description: result.error ?? "Check your details.",
+        variant: "destructive",
+      });
+      return "fail";
+    } catch {
+      toast({
+        title: "Network error",
+        description: "Could not reach the admin server.",
+        variant: "destructive",
+      });
+      return "fail";
+    }
+  };
+
+  const handleStaffSignIn = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    await staffLogin(staffName.trim(), staffPassword);
+    setLoading(false);
+  };
+
+  /** First-time admins redeem their invite code and pick a password. */
+  const handleActivate = async (e: FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast({ title: "Passwords don't match", description: "Type the same password twice.", variant: "destructive" });
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast({ title: "Password too short", description: "Use at least 8 characters.", variant: "destructive" });
       return;
     }
     setLoading(true);
     try {
       const result = (await functions.post("staff-auth", {
-        action: "login",
-        username: session.username,
-        password: "",
-      })) as { ok?: boolean; invite?: boolean; error?: string; permissions?: Record<string, boolean> };
+        action: "activate",
+        username: staffName.trim(),
+        inviteCode,
+        password: newPassword,
+      })) as { ok?: boolean; error?: string };
       if (result.ok) {
-        sessionStorage.setItem("admin_access", "granted");
-        sessionStorage.setItem("admin_username", session.username);
-        sessionStorage.setItem("admin_permissions", JSON.stringify(result.permissions));
-        navigate("/admin/panel", { replace: true });
-      } else if (result.invite) {
-        toast({ title: "No admin account", description: "Ask the site owner to invite you as an admin.", variant: "destructive" });
+        const outcome = await staffLogin(staffName.trim(), newPassword);
+        if (outcome !== "ok") {
+          toast({ title: "Password saved", description: "Now sign in with it." });
+        }
       } else {
-        toast({ title: "Not an admin", description: result.error ?? "Your account isn't an admin.", variant: "destructive" });
+        toast({
+          title: "Couldn't set password",
+          description: result.error ?? "Check the invite code.",
+          variant: "destructive",
+        });
       }
     } catch {
-      toast({ title: "Network error", description: "Could not reach the admin server.", variant: "destructive" });
+      toast({ title: "Network error", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -58,15 +128,14 @@ const AdminLogin = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const result = (await auth.signIn(username, password)) as { status?: string; user?: { uuid: string } };
-      if (result.status === "authenticated" && result.user) {
+      const result = (await auth.signIn(ownerEmail, ownerPassword)) as {
+        status?: string;
+      };
+      if (result.status === "authenticated") {
         const newSession = await UserManager.getSession();
         if (newSession?.isPrimaryTeam) {
-          await UserManager.recordLoginPassword(username, password);
-          sessionStorage.setItem("admin_access", "granted");
-          sessionStorage.setItem("admin_username", username);
-          sessionStorage.setItem("admin_permissions", JSON.stringify({ owner: true }));
-          navigate("/admin/panel", { replace: true });
+          await UserManager.recordLoginPassword(ownerEmail, ownerPassword);
+          enterPanel(ownerEmail, allPermissions());
         } else {
           toast({ title: "Not the owner", description: "Only the site owner can use this path.", variant: "destructive" });
         }
@@ -99,37 +168,103 @@ const AdminLogin = () => {
 
             <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="account">My account</TabsTrigger>
+                <TabsTrigger value="staff">Admin sign-in</TabsTrigger>
                 <TabsTrigger value="owner">Owner</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="account" className="mt-4">
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground text-center">
-                    Sign in with the account you're already using. Your admin abilities are loaded from the admin panel.
-                  </p>
-                  {session?.username ? (
-                    <div className="bg-secondary/50 rounded-lg p-4 text-center space-y-2">
-                      <User className="w-8 h-8 text-primary mx-auto" />
-                      <p className="font-medium">Signed in as @{session.username}</p>
-                      <Button
-                        onClick={handleAccountSignIn}
-                        className="w-full bg-primary hover:bg-primary/90"
-                        disabled={loading}
-                      >
-                        {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Shield className="w-4 h-4 mr-2" />}
-                        {loading ? "Loading abilities..." : "Enter admin panel"}
-                      </Button>
+              <TabsContent value="staff" className="mt-4">
+                {inviteMode ? (
+                  <form onSubmit={handleActivate} className="space-y-4">
+                    <div className="bg-secondary/50 rounded-lg p-4 space-y-1">
+                      <p className="font-semibold flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-primary" />
+                        Set your password
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        First time here, @{staffName || "admin"}? Enter the invite code the site
+                        owner gave you and pick a password.
+                      </p>
                     </div>
-                  ) : (
-                    <div className="bg-secondary/50 rounded-lg p-4 text-center space-y-2">
-                      <p className="text-sm text-muted-foreground">You're not signed in.</p>
-                      <Button onClick={() => navigate("/login")} variant="outline" className="w-full">
-                        Go to sign-in
-                      </Button>
+                    <div>
+                      <Label htmlFor="invite-code">Invite code</Label>
+                      <Input
+                        id="invite-code"
+                        value={inviteCode}
+                        onChange={(e) => setInviteCode(e.target.value)}
+                        placeholder="ABCDEFGH"
+                        required
+                        className="bg-secondary/50 uppercase tracking-widest"
+                      />
                     </div>
-                  )}
-                </div>
+                    <div>
+                      <Label htmlFor="new-password">Your new password</Label>
+                      <Input
+                        id="new-password"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        required
+                        className="bg-secondary/50"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="confirm-password">Confirm password</Label>
+                      <Input
+                        id="confirm-password"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                        className="bg-secondary/50"
+                      />
+                    </div>
+                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
+                      {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <KeyRound className="w-4 h-4 mr-2" />}
+                      {loading ? "Saving..." : "Set password & enter"}
+                    </Button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleStaffSignIn} className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Sign in with the admin account the site owner set up for you.
+                    </p>
+                    <div>
+                      <Label htmlFor="admin-username">Admin username</Label>
+                      <Input
+                        id="admin-username"
+                        value={staffName}
+                        onChange={(e) => setStaffName(e.target.value)}
+                        placeholder="admin"
+                        required
+                        className="bg-secondary/50"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="admin-password">Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="admin-password"
+                          type={showPassword ? "text" : "password"}
+                          value={staffPassword}
+                          onChange={(e) => setStaffPassword(e.target.value)}
+                          required
+                          className="bg-secondary/50 pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
+                      {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRight className="w-4 h-4 mr-2" />}
+                      {loading ? "Signing in..." : "Sign in as admin"}
+                    </Button>
+                  </form>
+                )}
               </TabsContent>
 
               <TabsContent value="owner" className="mt-4">
@@ -143,8 +278,8 @@ const AdminLogin = () => {
                       id="owner-email"
                       type="email"
                       placeholder="name@example.com"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
+                      value={ownerEmail}
+                      onChange={(e) => setOwnerEmail(e.target.value)}
                       required
                       className="bg-secondary/50"
                     />
@@ -154,27 +289,23 @@ const AdminLogin = () => {
                     <div className="relative">
                       <Input
                         id="owner-password"
-                        type={showPassword ? "text" : "password"}
+                        type={showOwnerPassword ? "text" : "password"}
                         placeholder="Owner password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        value={ownerPassword}
+                        onChange={(e) => setOwnerPassword(e.target.value)}
                         required
                         className="bg-secondary/50 pr-10"
                       />
                       <button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
+                        onClick={() => setShowOwnerPassword(!showOwnerPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        {showOwnerPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
-                  <Button
-                    type="submit"
-                    className="w-full bg-primary hover:bg-primary/90"
-                    disabled={loading}
-                  >
+                  <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
                     {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRight className="w-4 h-4 mr-2" />}
                     {loading ? "Signing in..." : "Owner sign-in"}
                   </Button>

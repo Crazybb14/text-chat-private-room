@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Search, Loader2, X, UserPlus, MessageCircle, Shield, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,29 +33,40 @@ const FriendsDialog = ({ currentUsername, onOpenDirectMessage }: FriendsDialogPr
   const [friends, setFriends] = useState<FriendshipRow[]>([]);
   const [tab, setTab] = useState<"search" | "requests" | "friends">("search");
 
-  useEffect(() => {
-    const loadFriendData = async () => {
-      if (!currentUsername) return;
+  const loadFriendData = useCallback(async () => {
+    if (!currentUsername) return;
 
-      try {
-        const [sentReq, receivedReq, friendList] = await Promise.all([
-          db.query<FriendshipRow>("friendships", { user_id: `eq.${currentUsername}` }),
-          db.query<FriendshipRow>("friendships", { friend_id: `eq.${currentUsername}` }),
-          db.query<FriendshipRow>("friendships", { status: "eq.accepted" }),
-        ]);
+    try {
+      const [sentReq, receivedReq, friendList] = await Promise.all([
+        db.query<FriendshipRow>("friendships", { user_id: `eq.${currentUsername}` }),
+        db.query<FriendshipRow>("friendships", { friend_id: `eq.${currentUsername}` }),
+        db.query<FriendshipRow>("friendships", { status: "eq.accepted" }),
+      ]);
 
-        setSentRequests(new Set(sentReq.filter((r) => r.status === "pending").map((r) => r.friend_id)));
-        setReceivedRequests(
-          receivedReq.filter((r) => r.status === "pending" && r.requested_by !== currentUsername)
-        );
-        setFriends(friendList.filter((r) => r.user_id === currentUsername || r.friend_id === currentUsername));
-      } catch (error) {
-        console.log("Error loading friend data:", error);
-      }
-    };
-
-    loadFriendData();
+      setSentRequests(new Set(sentReq.filter((r) => r.status === "pending").map((r) => r.friend_id)));
+      setReceivedRequests(
+        receivedReq.filter((r) => r.status === "pending" && r.requested_by !== currentUsername)
+      );
+      setFriends(friendList.filter((r) => r.user_id === currentUsername || r.friend_id === currentUsername));
+    } catch (error) {
+      console.log("Error loading friend data:", error);
+    }
   }, [currentUsername]);
+
+  useEffect(() => {
+    loadFriendData();
+    // Keep the list fresh while the dialog is open, so a request that
+    // arrives mid-conversation shows up without reopening anything.
+    const timer = setInterval(loadFriendData, 4000);
+    return () => clearInterval(timer);
+  }, [loadFriendData]);
+
+  // Switching tabs pulls fresh data, so a request that arrived while the
+  // dialog was open still shows up.
+  const switchTab = (next: "search" | "requests" | "friends") => {
+    setTab(next);
+    loadFriendData();
+  };
 
   useEffect(() => {
     const performSearch = async () => {
@@ -153,7 +164,7 @@ const FriendsDialog = ({ currentUsername, onOpenDirectMessage }: FriendsDialogPr
       {/* Tabs */}
       <div className="flex border-b">
         <button
-          onClick={() => setTab("search")}
+          onClick={() => switchTab("search")}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
             tab === "search"
               ? "text-primary border-b-2 border-primary"
@@ -164,7 +175,7 @@ const FriendsDialog = ({ currentUsername, onOpenDirectMessage }: FriendsDialogPr
           Find friends
         </button>
         <button
-          onClick={() => setTab("requests")}
+          onClick={() => switchTab("requests")}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
             tab === "requests"
               ? "text-primary border-b-2 border-primary"
@@ -175,7 +186,7 @@ const FriendsDialog = ({ currentUsername, onOpenDirectMessage }: FriendsDialogPr
           Requests {receivedRequests.length > 0 && `(${receivedRequests.length})`}
         </button>
         <button
-          onClick={() => setTab("friends")}
+          onClick={() => switchTab("friends")}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
             tab === "friends"
               ? "text-primary border-b-2 border-primary"
@@ -247,7 +258,7 @@ const FriendsDialog = ({ currentUsername, onOpenDirectMessage }: FriendsDialogPr
                           <p className="text-xs text-muted-foreground truncate">@{profile.username}</p>
                         </div>
                         {isFriend ? (
-                          <Button size="sm" variant="ghost" disabled>
+                          <Button size="sm" variant="ghost" disabled aria-label={`${profile.username} is already a friend`}>
                             <Shield className="w-4 h-4" />
                           </Button>
                         ) : requestSent ? (
@@ -255,7 +266,11 @@ const FriendsDialog = ({ currentUsername, onOpenDirectMessage }: FriendsDialogPr
                             Request sent
                           </Button>
                         ) : (
-                          <Button size="sm" onClick={() => sendRequest(profile.username)}>
+                          <Button
+                            size="sm"
+                            aria-label={`Add ${profile.username} as a friend`}
+                            onClick={() => sendRequest(profile.username)}
+                          >
                             <UserPlus className="w-4 h-4" />
                           </Button>
                         )}
@@ -289,10 +304,10 @@ const FriendsDialog = ({ currentUsername, onOpenDirectMessage }: FriendsDialogPr
                       <p className="text-xs text-muted-foreground">Wants to be your friend</p>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={() => handleAccept(request)}>
+                      <Button size="sm" aria-label={`Accept ${request.user_id}`} onClick={() => handleAccept(request)}>
                         Accept
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleReject(request)}>
+                      <Button size="sm" variant="ghost" aria-label={`Reject ${request.user_id}`} onClick={() => handleReject(request)}>
                         Reject
                       </Button>
                     </div>
@@ -327,10 +342,20 @@ const FriendsDialog = ({ currentUsername, onOpenDirectMessage }: FriendsDialogPr
                         <p className="text-xs text-muted-foreground">Friend</p>
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="ghost" onClick={() => onOpenDirectMessage?.(friendUsername)}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Message ${friendUsername}`}
+                          onClick={() => onOpenDirectMessage?.(friendUsername)}
+                        >
                           <MessageCircle className="w-4 h-4" />
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => removeFriend(friendship)}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Remove ${friendUsername}`}
+                          onClick={() => removeFriend(friendship)}
+                        >
                           <X className="w-4 h-4" />
                         </Button>
                       </div>

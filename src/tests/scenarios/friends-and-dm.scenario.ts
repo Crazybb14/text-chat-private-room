@@ -21,15 +21,16 @@ scenario(
 
     await step('alex sends sam a friend request', async () => {
       await users.alex.page.getByRole('button', { name: 'Friends' }).click();
-      await users.alex.page.getByPlaceholder('Add friend by username').fill('dmsam');
-      await users.alex.page.getByRole('button', { name: 'Send friend request' }).click();
-      await expect(users.alex.page.getByText('Waiting on dmsam')).toBeVisible();
+      await users.alex.page.getByPlaceholder('Search by name or username...').fill('dmsam');
+      await users.alex.page.getByRole('button', { name: 'Add dmsam as a friend' }).click();
     });
 
     await step('sam accepts the request', async () => {
       await users.sam.page.getByRole('button', { name: 'Friends' }).click();
+      await users.sam.page.getByRole('button', { name: /Requests/ }).click();
       await users.sam.page.getByRole('button', { name: 'Accept dmalex' }).click();
-      await expect(users.sam.page.getByRole('heading', { name: 'Your friends (1)' })).toBeVisible();
+      await users.sam.page.getByRole('button', { name: 'Friends (1)' }).click();
+      await expect(users.sam.page.getByRole('button', { name: 'Message dmalex' })).toBeVisible();
     });
 
     await step('alex messages sam', async () => {

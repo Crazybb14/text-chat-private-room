@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { fileKind, formatBytes, MAX_DM_FILE_BYTES, validateDmFile } from "./dmFiles";
+import {
+  fileKind,
+  fileVisibleToViewer,
+  formatBytes,
+  isFileApproved,
+  MAX_DM_FILE_BYTES,
+  validateDmFile,
+} from "./dmFiles";
 
 function makeFile(_size: number, name = "movie.mp4", type = "video/mp4"): File {
   return new File(["x"], name, { type });
@@ -54,5 +61,22 @@ describe("formatBytes", () => {
     expect(formatBytes(512)).toBe("512 B");
     expect(formatBytes(1024 * 1024)).toBe("1.0 MB");
     expect(formatBytes(460 * 1024 * 1024)).toBe("460 MB");
+  });
+});
+
+// @kliv-spec-derived — from user intent: "all files have to get approved by admin"
+describe("file approval", () => {
+  it("treats only approved files as visible to everyone", () => {
+    expect(isFileApproved("approved")).toBe(true);
+    expect(isFileApproved("pending")).toBe(false);
+    expect(isFileApproved(null)).toBe(false);
+    expect(isFileApproved(undefined)).toBe(false);
+  });
+
+  it("lets the sender see their own file while it waits, but nobody else", () => {
+    expect(fileVisibleToViewer("pending", true)).toBe(true);
+    expect(fileVisibleToViewer("pending", false)).toBe(false);
+    expect(fileVisibleToViewer("approved", false)).toBe(true);
+    expect(fileVisibleToViewer(null, false)).toBe(false);
   });
 });

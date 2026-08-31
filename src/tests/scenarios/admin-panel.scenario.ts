@@ -1,19 +1,34 @@
 import { scenario, step, expect } from 'kliv-scenario';
 
+// A staff admin the owner invited. password_hash is what the admin server
+// stores: sha256(`${salt}:${password}`) for salt/password below.
+const siteAdminRow = {
+  username: 'siteadmin',
+  password_hash: 'cccd69a1993ff60dfc005e70959f098dd64069f3c7b37f2f4c0c9160f15d633d',
+  salt: 'aabbccdd00112233', // panel-pass-123
+  permissions: JSON.stringify({ rooms: true, messages: true, files: true, live: true, dms: true, notifications: true }),
+  is_active: 1,
+  role: 'admin',
+  status: 'active',
+  invite_code: '',
+};
+
 scenario(
   'admin password gates the panel',
-  { setup: {} },
+  { setup: { database: [{ table: 'admin_users', rows: [siteAdminRow] }] } },
   async ({ page }) => {
     await step('wrong password is rejected', async () => {
       await page.goto('/admin');
-      await page.getByPlaceholder('Enter password').fill('wrong-code');
-      await page.getByRole('button', { name: 'Access Admin Panel' }).click();
-      await expect(page.getByText('Invalid password')).toBeVisible();
+      await page.getByLabel('Admin username').fill('siteadmin');
+      await page.getByLabel('Password').fill('not-the-password');
+      await page.getByRole('button', { name: 'Sign in as admin' }).click();
+      // still on the login form
+      await expect(page.getByRole('button', { name: 'Sign in as admin' })).toBeVisible();
     });
 
     await step('correct password opens the panel', async () => {
-      await page.getByPlaceholder('Enter password').fill('qacgt5555$');
-      await page.getByRole('button', { name: 'Access Admin Panel' }).click();
+      await page.getByLabel('Password').fill('panel-pass-123');
+      await page.getByRole('button', { name: 'Sign in as admin' }).click();
       await expect(page.getByText('Admin Panel').first()).toBeVisible();
     });
 
@@ -23,8 +38,8 @@ scenario(
     });
 
     await step('download tab is reserved for the owner', async () => {
-      // The website ZIP contains the site's source, so a code-only login no
-      // longer sees it — only the signed-in owner does.
+      // The website ZIP contains the site's source, so a staff login never
+      // sees it — only the signed-in owner does.
       await expect(page.getByRole('tab', { name: 'Download' })).toHaveCount(0);
     });
   }
@@ -36,6 +51,7 @@ scenario(
     setup: {
       users: { admin: {} },
       database: [
+        { table: 'admin_users', rows: [siteAdminRow] },
         {
           table: 'rooms',
           rows: [{ name: 'Monitor Room', code: null, type: 'public' }],
@@ -50,10 +66,11 @@ scenario(
   async ({ users }) => {
     const { page } = users.admin;
 
-    await step('opens the admin panel with the password', async () => {
+    await step('opens the admin panel with the staff sign-in', async () => {
       await page.goto('/admin');
-      await page.getByPlaceholder('Enter password').fill('qacgt5555$');
-      await page.getByRole('button', { name: 'Access Admin Panel' }).click();
+      await page.getByLabel('Admin username').fill('siteadmin');
+      await page.getByLabel('Password').fill('panel-pass-123');
+      await page.getByRole('button', { name: 'Sign in as admin' }).click();
       await expect(page.getByText('Admin Panel').first()).toBeVisible();
     });
 

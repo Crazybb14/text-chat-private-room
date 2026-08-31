@@ -7,6 +7,21 @@ scenario(
       users: { admin: {} },
       database: [
         {
+          table: 'admin_users',
+          rows: [
+            {
+              username: 'siteadmin',
+              password_hash: 'cccd69a1993ff60dfc005e70959f098dd64069f3c7b37f2f4c0c9160f15d633d',
+              salt: 'aabbccdd00112233',
+              permissions: JSON.stringify({ rooms: true, notifications: true, dms: true }),
+              is_active: 1,
+              role: 'admin',
+              status: 'active',
+              invite_code: '',
+            },
+          ],
+        },
+        {
           table: 'user_profiles',
           rows: [
             { user_id: 'u1', username: 'alice', display_name: 'Alice', bio: '', avatar_url: '', status: 'offline', last_seen: 0 },
@@ -19,10 +34,11 @@ scenario(
   async ({ users }) => {
     const { page } = users.admin;
 
-    await step('opens the admin panel with the password', async () => {
+    await step('opens the admin panel with the staff sign-in', async () => {
       await page.goto('/admin');
-      await page.getByPlaceholder('Enter password').fill('qacgt5555$');
-      await page.getByRole('button', { name: 'Access Admin Panel' }).click();
+      await page.getByLabel('Admin username').fill('siteadmin');
+      await page.getByLabel('Password').fill('panel-pass-123');
+      await page.getByRole('button', { name: 'Sign in as admin' }).click();
       await expect(page.getByText('Admin Panel').first()).toBeVisible();
     });
 

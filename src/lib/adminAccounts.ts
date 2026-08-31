@@ -2,6 +2,7 @@ export const ADMIN_ABILITIES = [
   { key: "rooms", label: "Rooms", description: "Create, open, and delete chat rooms" },
   { key: "live", label: "Live monitor", description: "Watch rooms live and send messages as users" },
   { key: "messages", label: "Messages", description: "Browse and delete room messages" },
+  { key: "files", label: "Files", description: "Approve or delete every shared file" },
   { key: "dms", label: "Direct messages", description: "Read every private conversation" },
   { key: "accounts", label: "Accounts", description: "See every account on the site" },
   { key: "ips", label: "IP logs", description: "See IP addresses and sign-in history" },
