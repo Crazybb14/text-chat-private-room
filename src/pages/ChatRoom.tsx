@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import { getDeviceId } from "@/lib/deviceId";
-import UserManager from "@/lib/userManagement";
+import UserManager, { type SessionInfo } from "@/lib/userManagement";
 import MessageBubble, { type ChatMessage } from "@/components/MessageBubble";
 import NotificationBell from "@/components/NotificationBell";
 import FriendsDialog from "@/components/FriendsDialog";
@@ -42,6 +42,7 @@ interface OnlineUserRow {
 type Phase = "loading" | "banned" | "gate" | "ready" | "notfound";
 
 const PRESENCE_WINDOW_MS = 5 * 60 * 1000;
+const TYPING_WINDOW_MS = 8 * 1000;
 
 const ChatRoom = () => {
   const { roomId } = useParams<{ roomId: string }>();
@@ -50,6 +51,7 @@ const ChatRoom = () => {
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [room, setRoom] = useState<RoomRow | null>(null);
+  const [session, setSession] = useState<SessionInfo | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -57,11 +59,14 @@ const ChatRoom = () => {
   const [codeInput, setCodeInput] = useState("");
   const [codeChecking, setCodeChecking] = useState(false);
   const [onlineNames, setOnlineNames] = useState<string[]>([]);
+  const [typingNames, setTypingNames] = useState<string[]>([]);
   const [avatars, setAvatars] = useState<Record<string, string>>({});
   const [friendsOpen, setFriendsOpen] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const messageCountRef = useRef(0);
+  const typingRowRef = useRef<number | null>(null);
+  const typingSentAtRef = useRef(0);
 
   const loadMessages = useCallback(async () => {
     if (!roomId) return;
@@ -133,6 +138,59 @@ const ChatRoom = () => {
     }
   }, [roomId]);
 
+  const loadTyping = useCallback(async () => {
+    if (!roomId || !username) return;
+    try {
+      const rows = await db.query<{ username: string; draft: string; updated_at: number }>(
+        "typing_status",
+        { room_id: `eq.${roomId}` }
+      );
+      const cutoff = Date.now() - TYPING_WINDOW_MS;
+      setTypingNames(
+        rows
+          .filter((r) => r.username !== username && r.draft && Number(r.updated_at) >= cutoff)
+          .map((r) => r.username)
+      );
+    } catch {
+      // best-effort
+    }
+  }, [roomId, username]);
+
+  /** Shares what the user is currently typing (throttled) so admins can watch live. */
+  const syncTyping = useCallback(
+    async (draft: string, force = false) => {
+      if (!roomId || !username) return;
+      const now = Date.now();
+      if (!force && now - typingSentAtRef.current < 1500) return;
+      typingSentAtRef.current = now;
+      try {
+        const payload = { draft: draft.slice(0, 300), updated_at: Date.now() };
+        if (typingRowRef.current !== null) {
+          await db.update("typing_status", { _row_id: `eq.${typingRowRef.current}` }, payload);
+        } else {
+          const existing = await db.query<{ _row_id: number }>("typing_status", {
+            room_id: `eq.${roomId}`,
+            username: `eq.${username}`,
+          });
+          if (existing.length > 0) {
+            typingRowRef.current = existing[0]._row_id;
+            await db.update("typing_status", { _row_id: `eq.${existing[0]._row_id}` }, payload);
+          } else {
+            const row = await db.insert<{ _row_id: number }>("typing_status", {
+              room_id: Number(roomId),
+              username,
+              ...payload,
+            });
+            typingRowRef.current = row._row_id;
+          }
+        }
+      } catch {
+        // best-effort
+      }
+    },
+    [roomId, username]
+  );
+
   // Initial load
   useEffect(() => {
     const init = async () => {
@@ -140,26 +198,32 @@ const ChatRoom = () => {
         setPhase("notfound");
         return;
       }
-      const deviceId = getDeviceId();
       try {
-        const bans = await db.query("bans", { device_id: `eq.${deviceId}` });
+        const currentSession = await UserManager.getSession();
+        if (!currentSession) {
+          navigate("/login", { replace: true });
+          return;
+        }
+        if (!currentSession.username) {
+          navigate("/", { replace: true });
+          return;
+        }
+        setSession(currentSession);
+        setUsername(currentSession.username);
+
+        const bans = await db.query("bans", { username: `eq.${currentSession.username}` });
         if (bans.length > 0) {
           setPhase("banned");
           return;
         }
+
         const found = await db.get<RoomRow>("rooms", roomId);
         if (!found) {
           setPhase("notfound");
           return;
         }
         setRoom(found);
-        const user = await UserManager.getUsername();
-        if (!user) {
-          navigate("/");
-          return;
-        }
-        setUsername(user);
-        saveProfile(user, { status: "online" }).catch(() => undefined);
+        saveProfile(currentSession.username, { status: "online" }).catch(() => undefined);
 
         if (found.type === "private" && sessionStorage.getItem(`room_unlocked_${roomId}`) !== "1") {
           setPhase("gate");
@@ -174,21 +238,25 @@ const ChatRoom = () => {
     init();
   }, [roomId, navigate]);
 
-  // Polling: messages + presence
+  // Polling: messages + presence + typing
   useEffect(() => {
     if (phase !== "ready") return;
     loadMessages();
     loadOnline();
+    loadTyping();
     updatePresence();
     const messageTimer = setInterval(loadMessages, 2000);
+    const typingTimer = setInterval(loadTyping, 2000);
     const presenceTimer = setInterval(updatePresence, 15000);
     const onlineTimer = setInterval(loadOnline, 20000);
     return () => {
       clearInterval(messageTimer);
+      clearInterval(typingTimer);
       clearInterval(presenceTimer);
       clearInterval(onlineTimer);
+      syncTyping("", true);
     };
-  }, [phase, loadMessages, loadOnline, updatePresence]);
+  }, [phase, loadMessages, loadOnline, loadTyping, updatePresence, syncTyping]);
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
@@ -233,6 +301,7 @@ const ChatRoom = () => {
         is_ai: 0,
       });
       setInput("");
+      syncTyping("", true);
       await loadMessages();
     } catch {
       toast({ title: "Message failed to send", variant: "destructive" });
@@ -255,7 +324,7 @@ const ChatRoom = () => {
         <div className="max-w-md text-center space-y-6">
           <BanIcon className="w-16 h-16 text-red-500 mx-auto" />
           <h1 className="text-3xl font-bold">You're banned</h1>
-          <p className="text-white/70">This device has been banned from ChatRooms.</p>
+          <p className="text-white/70">Your account has been banned from ChatRooms.</p>
           <Button variant="destructive" onClick={() => navigate("/appeal")}>
             Submit an appeal
           </Button>
@@ -334,6 +403,11 @@ const ChatRoom = () => {
                 {onlineNames.length} online
                 {onlineNames.length > 0 && username ? ` — ${onlineNames.join(", ")}` : ""}
               </p>
+              {typingNames.length > 0 && (
+                <p className="text-xs text-primary/80 truncate">
+                  {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -369,7 +443,10 @@ const ChatRoom = () => {
         <form onSubmit={handleSend} className="max-w-4xl mx-auto px-4 py-3 flex gap-2">
           <Input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              syncTyping(e.target.value);
+            }}
             placeholder={`Message ${room.name}...`}
             maxLength={2000}
           />

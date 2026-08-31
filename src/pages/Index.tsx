@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Ban as BanIcon,
   Lightbulb,
   Loader2,
   Lock,
+  LogOut,
   MessageSquare,
   Plus,
   Settings as SettingsIcon,
@@ -19,11 +20,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
-import { getDeviceId } from "@/lib/deviceId";
-import UserManager from "@/lib/userManagement";
-import UsernameSetup from "@/components/UsernameSetup";
+import UserManager, { type SessionInfo } from "@/lib/userManagement";
 import NotificationBell from "@/components/NotificationBell";
 import FriendsDialog from "@/components/FriendsDialog";
+import DowntimeScreen, { getActiveDowntime, type DowntimeInfo } from "@/components/DowntimeScreen";
 
 interface RoomRow {
   _row_id: number;
@@ -33,13 +33,7 @@ interface RoomRow {
   [key: string]: unknown;
 }
 
-interface DowntimeInfo {
-  start: number;
-  end: number;
-  reason: string | null;
-}
-
-type Phase = "loading" | "banned" | "downtime" | "setup" | "ready";
+type Phase = "loading" | "banned" | "downtime" | "finish" | "ready";
 
 const generateRoomCode = () => {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -48,19 +42,11 @@ const generateRoomCode = () => {
   return code;
 };
 
-const formatTime = (value: number) =>
-  new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-
 const Index = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [phase, setPhase] = useState<Phase>("loading");
-  const [username, setUsername] = useState<string | null>(null);
+  const [session, setSession] = useState<SessionInfo | null>(null);
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [joinCode, setJoinCode] = useState("");
   const [joining, setJoining] = useState(false);
@@ -70,34 +56,13 @@ const Index = () => {
   const [creating, setCreating] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [downtime, setDowntime] = useState<DowntimeInfo | null>(null);
-  const [now, setNow] = useState(Date.now());
 
-  const checkDowntime = useCallback(async (): Promise<boolean> => {
-    try {
-      const rows = await db.query("downtime_schedules", {
-        is_active: "eq.1",
-        order: "start_time.desc",
-      });
-      const current = Date.now();
-      const active = rows.find((r) => {
-        const start = Number(r.start_time);
-        const end = Number(r.end_time);
-        return current >= start && current < end;
-      });
-      if (active) {
-        setDowntime({
-          start: Number(active.start_time),
-          end: Number(active.end_time),
-          reason: (active.reason as string | null) ?? null,
-        });
-        return true;
-      }
-      setDowntime(null);
-      return false;
-    } catch {
-      return false;
-    }
-  }, []);
+  // One-time profile completion
+  const [profileUsername, setProfileUsername] = useState("");
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+
+  const username = session?.username ?? null;
 
   const loadRooms = useCallback(async () => {
     try {
@@ -114,50 +79,92 @@ const Index = () => {
         navigate("/terms");
         return;
       }
+      const currentSession = await UserManager.getSession();
+      if (!currentSession) {
+        navigate("/login", { replace: true });
+        return;
+      }
+      setSession(currentSession);
+
+      const down = await getActiveDowntime();
+      if (down) {
+        setDowntime(down);
+        setPhase("downtime");
+        return;
+      }
+
+      if (!currentSession.username) {
+        setPhase("finish");
+        return;
+      }
+
       try {
-        const deviceId = getDeviceId();
-        const bans = await db.query("bans", { device_id: `eq.${deviceId}` });
+        const bans = await db.query("bans", { username: `eq.${currentSession.username}` });
         if (bans.length > 0) {
           setPhase("banned");
           return;
         }
-        const isDown = await checkDowntime();
-        if (isDown) {
-          setPhase("downtime");
-          return;
-        }
-        const user = await UserManager.getUsername();
-        if (!user) {
-          setPhase("setup");
-          return;
-        }
-        setUsername(user);
-        setPhase("ready");
-        loadRooms();
-      } catch (error) {
-        console.error("Init failed:", error);
-        setPhase("setup");
+      } catch {
+        // ban check is best-effort
       }
+
+      setPhase("ready");
+      loadRooms();
     };
     init();
-  }, [navigate, checkDowntime, loadRooms]);
+  }, [navigate, loadRooms]);
 
   // Poll for downtime while the site is usable
   useEffect(() => {
     if (phase !== "ready") return;
     const interval = setInterval(async () => {
-      const isDown = await checkDowntime();
-      if (isDown) setPhase("downtime");
+      const down = await getActiveDowntime();
+      if (down) {
+        setDowntime(down);
+        setPhase("downtime");
+      }
     }, 30000);
     return () => clearInterval(interval);
-  }, [phase, checkDowntime]);
-
-  // Countdown ticker while downtime screen is up
-  useEffect(() => {
-    if (phase !== "downtime") return;
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
   }, [phase]);
+
+  const handleSaveUsername = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!session) return;
+    const chosen = profileUsername.trim().toLowerCase();
+    if (chosen.length < 3 || chosen.length > 20 || !/^[a-z0-9_]+$/.test(chosen)) {
+      setProfileError("Usernames are 3–20 characters: letters, numbers, and underscores.");
+      return;
+    }
+    setProfileBusy(true);
+    setProfileError(null);
+    try {
+      if (!(await UserManager.isUsernameAvailable(chosen))) {
+        setProfileError("That username is already taken.");
+        return;
+      }
+      await UserManager.createProfile({
+        userUuid: session.userUuid,
+        email: session.email,
+        username: chosen,
+        firstName: session.firstName ?? "",
+        lastName: session.lastName ?? "",
+      });
+      setSession({ ...session, username: chosen });
+      setProfileUsername("");
+      setPhase("ready");
+      loadRooms();
+      toast({ title: "You're all set!", description: `Your username is @${chosen}.` });
+    } catch {
+      setProfileError("Couldn't save that username. Try another one.");
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await UserManager.signOut();
+    navigate("/login", { replace: true });
+  };
 
   const handleJoinByCode = async () => {
     const code = joinCode.trim().toUpperCase();
@@ -218,7 +225,7 @@ const Index = () => {
           <BanIcon className="w-16 h-16 text-red-500 mx-auto" />
           <h1 className="text-3xl font-bold">You're banned</h1>
           <p className="text-white/70">
-            This device has been banned from ChatRooms. If you believe this is a mistake, you can
+            Your account has been banned from ChatRooms. If you believe this is a mistake, you can
             submit an appeal.
           </p>
           <Button variant="destructive" onClick={() => navigate("/appeal")}>
@@ -230,43 +237,46 @@ const Index = () => {
   }
 
   if (phase === "downtime" && downtime) {
-    const remaining = Math.max(0, downtime.end - now);
-    const hours = Math.floor(remaining / 3600000);
-    const minutes = Math.floor((remaining % 3600000) / 60000);
-    const seconds = Math.floor((remaining % 60000) / 1000);
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
-        <div className="max-w-lg text-center space-y-6">
-          <h1 className="text-4xl font-black tracking-widest text-red-500">
-            DOWNTIME HAS BEEN ENABLED
-          </h1>
-          {downtime.reason && <p className="text-white/80 text-lg">{downtime.reason}</p>}
-          <div className="text-white/70 space-y-1">
-            <p>From: {formatTime(downtime.start)}</p>
-            <p>To: {formatTime(downtime.end)}</p>
-          </div>
-          <div className="font-mono text-5xl font-bold tabular-nums">
-            {String(hours).padStart(2, "0")}:{String(minutes).padStart(2, "0")}:
-            {String(seconds).padStart(2, "0")}
-          </div>
-          <p className="text-white/50 text-sm">
-            The site will come back automatically when downtime ends. This page will update on its
-            own.
-          </p>
-        </div>
-      </div>
-    );
+    return <DowntimeScreen info={downtime} />;
   }
 
-  if (phase === "setup") {
+  if (phase === "finish") {
     return (
-      <UsernameSetup
-        onUsernameSet={(user) => {
-          setUsername(user);
-          setPhase("ready");
-          loadRooms();
-        }}
-      />
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-background pointer-events-none" />
+        <Card className="relative z-10 w-full max-w-md">
+          <CardContent className="py-8 space-y-5">
+            <div className="text-center space-y-1">
+              <h1 className="text-2xl font-bold">One last thing</h1>
+              <p className="text-sm text-muted-foreground">
+                {session?.firstName ? `Welcome, ${session.firstName}! ` : "Welcome! "}
+                Pick the username you'll chat under.
+              </p>
+            </div>
+            <form onSubmit={handleSaveUsername} className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="profile-username">Username</Label>
+                <Input
+                  id="profile-username"
+                  placeholder="3–20 letters, numbers, underscores"
+                  value={profileUsername}
+                  onChange={(e) => setProfileUsername(e.target.value.toLowerCase())}
+                  maxLength={20}
+                  autoFocus
+                />
+              </div>
+              {profileError && <p className="text-sm text-destructive">{profileError}</p>}
+              <Button type="submit" className="w-full" disabled={profileBusy || !profileUsername.trim()}>
+                {profileBusy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Save username
+              </Button>
+            </form>
+            <Button variant="ghost" className="w-full" onClick={handleSignOut}>
+              <LogOut className="w-4 h-4 mr-2" /> Use a different account
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -295,6 +305,9 @@ const Index = () => {
             </Button>
             <Button variant="ghost" size="icon" aria-label="Admin" title="Admin" onClick={() => navigate("/admin")}>
               <Shield className="w-5 h-5" />
+            </Button>
+            <Button variant="ghost" size="icon" aria-label="Sign out" title="Sign out" onClick={handleSignOut}>
+              <LogOut className="w-5 h-5" />
             </Button>
           </div>
         </div>
