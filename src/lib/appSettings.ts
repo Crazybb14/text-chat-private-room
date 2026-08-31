@@ -15,7 +15,7 @@ export interface SettingDef {
   description: string;
 }
 
-export const SETTING_GROUPS = ["Chat & messages", "Rooms", "People", "Site"] as const;
+export const SETTING_GROUPS = ["Chat & messages", "Rooms", "People", "Site", "Moderation", "Security"] as const;
 
 export const SETTING_DEFS: SettingDef[] = [
   {
@@ -183,7 +183,166 @@ export const SETTING_DEFS: SettingDef[] = [
     default: "",
     description: "Shown on the downtime screen while the site is down.",
   },
+  {
+    key: "lockdown_enabled",
+    label: "Lockdown mode",
+    group: "Security",
+    type: "toggle",
+    default: false,
+    description: "When on, all access is blocked except the admin panel and owner bypass.",
+  },
+  {
+    key: "auto_ban_enabled",
+    label: "Auto-ban on profanity",
+    group: "Moderation",
+    type: "toggle",
+    default: false,
+    description: "Automatically ban users who send banned words. Use with care.",
+  },
+  {
+    key: "guest_access_enabled",
+    label: "Allow guest access",
+    group: "Security",
+    type: "toggle",
+    default: false,
+    description: "When off, only signed-in users can access the site.",
+  },
+  {
+    key: "ip_logging_enabled",
+    label: "IP logging",
+    group: "Security",
+    type: "toggle",
+    default: true,
+    description: "Store IP addresses on sign-up and sign-in for security.",
+  },
+  {
+    key: "require_email_verification",
+    label: "Require email verification",
+    group: "Security",
+    type: "toggle",
+    default: false,
+    description: "When on, users must verify their email before they can chat.",
+  },
+  {
+    key: "max_friends_per_user",
+    label: "Max friends per user",
+    group: "People",
+    type: "number",
+    default: 500,
+    min: 10,
+    max: 2000,
+    description: "How many friends one account can have.",
+  },
+  {
+    key: "max_friend_requests_per_day",
+    label: "Max friend requests per day",
+    group: "People",
+    type: "number",
+    default: 50,
+    min: 5,
+    max: 200,
+    description: "Limit how many friend requests a user can send in 24 hours.",
+  },
+  {
+    key: "dm_voice_video_enabled",
+    label: "Voice and video in DMs",
+    group: "Chat & messages",
+    type: "toggle",
+    default: true,
+    description: "Allow users to start voice and video calls in direct messages.",
+  },
+  {
+    key: "room_voice_video_enabled",
+    label: "Voice and video in rooms",
+    group: "Chat & messages",
+    type: "toggle",
+    default: true,
+    description: "Allow users to start voice and video calls in chat rooms.",
+  },
+  {
+    key: "ai_beta_enabled",
+    label: "AI assistant (beta)",
+    group: "Chat & messages",
+    type: "toggle",
+    default: false,
+    description: "Show an AI assistant tab in the admin panel. Uses a free model.",
+  },
+  {
+    key: "delete_message_history_enabled",
+    label: "Allow message history deletion",
+    group: "Moderation",
+    type: "toggle",
+    default: false,
+    description: "When on, admins can delete a user's full message history in one action.",
+  },
+  {
+    key: "public_room_file_sharing",
+    label: "File sharing in public rooms",
+    group: "Chat & messages",
+    type: "toggle",
+    default: false,
+    description: "Allow users to share files in public rooms. Off by default.",
+  },
 ];
+
+/** Real bad-word list for the auto-ban filter. Only actual profanity, hate speech, and explicit slurs — no single-letter false positives. */
+export const AUTO_BAN_WORDS = [
+  // Extreme profanity
+  "fuck", "fucking", "fucked", "fucker", "fuckface", "fuckwit", "fuckhead", "fucktard",
+  "shit", "shitty", "shittier", "shittest", "shithead", "shitface", "shitstain",
+  "cunt", "cunts", "cunting", "cuntface", "cuntlick", "cuntlapper",
+  "bastard", "bastards", "sonofabitch", "son of a bitch",
+  "bitch", "bitches", "bitching", "bitchy",
+  "whore", "whores", "whoring", "whorebag",
+  "slut", "sluts", "slutty", "slutbag",
+  "dick", "dicks", "dickhead", "dickface", "dickwad", "dickless",
+  "pussy", "pussies", "pussy whipped",
+  "cock", "cocks", "cockhead", "cockface",
+  "twat", "twats", "twatface", "twatwaffle",
+  "ass", "asses", "asshole", "assholes", "asswipe", "assface",
+  "piss", "pissed", "piss off",
+  // Hate speech and slurs
+  "nigger", "niggers", "nigga", "niggaz",
+  "chink", "chinks", "chinky",
+  "spic", "spics", "spiccy",
+  "kike", "kikes", "kikeface",
+  "fag", "faggot", "faggots", "faggy",
+  "dyke", "dykes", "dykey",
+  "tranny", "trannies", "trannyfucker",
+  "retard", "retards", "retarded", "retardface",
+  "mongoloid", "mongoloids",
+  // Sexual violence and explicit terms
+  "rape", "rapes", "raping", "rapist", "rapists",
+  "molest", "molester", "molesters", "molesting",
+  "pedophile", "pedophilia", "pedophiles",
+  // Drugs (slang)
+  "heroin", "meth", "crack", "cocaine",
+  // Violent extremism and terrorist terms
+  "isis", "al qaeda",
+];
+
+/** Bypass variants: spaced letters, letter swaps, repeats, and common obfuscations. */
+export const AUTO_BAN_VARIANTS = [
+  // Spaced versions
+  "f u c k", "s h i t", "c u n t", "n i g g e r", "n i g g a",
+  "f a g", "f a g g o t", "r e t a r d", "r a p e",
+  "k i k e", "s p i c", "c h i n k", "d y k e", "t w a t",
+  // Letter swaps (ph → f, x → ks, s → z, etc.)
+  "phuck", "fuk", "fukking", "sh1t", "shi1t", "fvck", "fck",
+  "kike", "k1ke", "fag", "f4g", "fagg0t", "n1gger", "n1gga",
+  "retard", "r3tard", "ret4rd", "chink", "ch1nk", "spic", "sp1c",
+  "twat", "tw4t", "cunt", "kun7", "kun7t", "wh0re", "wh4r",
+  // Repeat letters to bypass filters
+  "fuuck", "fuuuck", "shiit", "shiiit", "ccunt", "ccuunt",
+  "nigger", "niigger", "niggger", "niiigger", "faag", "fagg",
+  // Common internet slang obfuscations
+  "f4gg0t", "n1gger", "nigg4h", "r3t4rd", "ch1nk", "5pic",
+  "fvck", "phuk", "fukc", "sheit", "kunt", "kun7",
+  "d1ck", "d1ckhead", "p0rn",
+];
+
+/** Combined list for the auto-ban filter. Both clean words and bypass variants. */
+export const AUTO_BAN_LIST = [...new Set([...AUTO_BAN_WORDS, ...AUTO_BAN_VARIANTS])];
 
 export type AppSettings = Record<string, SettingValue>;
 

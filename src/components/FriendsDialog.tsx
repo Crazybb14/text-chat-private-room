@@ -1,235 +1,348 @@
-import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useState, useEffect } from "react";
+import { Search, Loader2, X, UserPlus, MessageCircle, Shield, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import {
-  acceptFriendRequest,
-  deleteFriendship,
-  getFriends,
-  getIncomingRequests,
-  getOutgoingRequests,
-  getProfile,
-  removeFriend,
-  sendFriendRequest,
-  type FriendshipRow,
-  type ProfileRow,
-} from "@/lib/friends";
-import { Check, MessageSquare, RefreshCw, UserMinus, UserPlus, Users, X } from "lucide-react";
-import { settingBool, useAppSettings } from "@/lib/appSettings";
+import db from "@/lib/shared/kliv-database.js";
+import type { FriendshipRow, ProfileRow } from "@/lib/friends";
+import { sendFriendRequest, acceptFriendRequest, deleteFriendship } from "@/lib/friends";
 
 interface FriendsDialogProps {
-  open: boolean;
-  onClose: () => void;
-  username: string;
+  currentUsername: string | null;
+  onOpenDirectMessage?: (username: string) => void;
 }
 
-interface FriendEntry {
-  username: string;
-  profile: ProfileRow | null;
-}
+const getInitials = (name: string): string => {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+};
 
-const FriendsDialog = ({ open, onClose, username }: FriendsDialogProps) => {
-  const navigate = useNavigate();
+const FriendsDialog = ({ currentUsername, onOpenDirectMessage }: FriendsDialogProps) => {
   const { toast } = useToast();
-  const { settings } = useAppSettings();
-  const friendsAllowed = settingBool(settings, "allow_friend_requests");
-  const dmsAllowed = settingBool(settings, "allow_direct_messages");
-  const [friends, setFriends] = useState<FriendEntry[]>([]);
-  const [incoming, setIncoming] = useState<FriendshipRow[]>([]);
-  const [outgoing, setOutgoing] = useState<FriendshipRow[]>([]);
-  const [addName, setAddName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [friendNames, incomingRows, outgoingRows] = await Promise.all([
-        getFriends(username),
-        getIncomingRequests(username),
-        getOutgoingRequests(username),
-      ]);
-      const profiles = await Promise.all(friendNames.map((f) => getProfile(f)));
-      setFriends(friendNames.map((f, i) => ({ username: f, profile: profiles[i] })));
-      setIncoming(incomingRows);
-      setOutgoing(outgoingRows);
-    } catch (error) {
-      console.error("Failed to load friends:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [username]);
+  const [search, setSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<ProfileRow[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
+  const [receivedRequests, setReceivedRequests] = useState<FriendshipRow[]>([]);
+  const [friends, setFriends] = useState<FriendshipRow[]>([]);
+  const [tab, setTab] = useState<"search" | "requests" | "friends">("search");
 
   useEffect(() => {
-    if (open) {
-      load();
-    }
-  }, [open, load]);
+    const loadFriendData = async () => {
+      if (!currentUsername) return;
 
-  const handleAdd = async () => {
-    const name = addName.trim().toLowerCase();
-    if (!name) return;
-    setBusy(true);
-    const result = await sendFriendRequest(username, name);
-    toast({
-      title: result.ok ? "Request sent" : "Couldn't send request",
-      description: result.message,
-      variant: result.ok ? undefined : "destructive",
-    });
-    if (result.ok) setAddName("");
-    await load();
-    setBusy(false);
+      try {
+        const [sentReq, receivedReq, friendList] = await Promise.all([
+          db.query<FriendshipRow>("friendships", { user_id: `eq.${currentUsername}` }),
+          db.query<FriendshipRow>("friendships", { friend_id: `eq.${currentUsername}` }),
+          db.query<FriendshipRow>("friendships", { status: "eq.accepted" }),
+        ]);
+
+        setSentRequests(new Set(sentReq.filter((r) => r.status === "pending").map((r) => r.friend_id)));
+        setReceivedRequests(
+          receivedReq.filter((r) => r.status === "pending" && r.requested_by !== currentUsername)
+        );
+        setFriends(friendList.filter((r) => r.user_id === currentUsername || r.friend_id === currentUsername));
+      } catch (error) {
+        console.log("Error loading friend data:", error);
+      }
+    };
+
+    loadFriendData();
+  }, [currentUsername]);
+
+  useEffect(() => {
+    const performSearch = async () => {
+      if (!search.trim()) {
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        // Prefix search on both username and display_name
+        const results = await db.query<ProfileRow>("user_profiles", {
+          or: `(${encodeURIComponent(`username.ilike.*${search}*`)},${encodeURIComponent(`display_name.ilike.*${search}*`)})`,
+          limit: 20,
+        });
+        setSearchResults(results);
+      } catch (error) {
+        console.log("Error searching users:", error);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    const debounce = setTimeout(performSearch, 200);
+    return () => clearTimeout(debounce);
+  }, [search]);
+
+  const sendRequest = async (targetUsername: string) => {
+    if (!currentUsername) return;
+    if (currentUsername === targetUsername) {
+      toast({ title: "Can't add yourself", variant: "destructive" });
+      return;
+    }
+
+    const result = await sendFriendRequest(currentUsername, targetUsername);
+    if (result.ok) {
+      setSentRequests((prev) => new Set(prev).add(targetUsername));
+      toast({ title: "Request sent", description: result.message });
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
   };
 
   const handleAccept = async (row: FriendshipRow) => {
-    setBusy(true);
-    await acceptFriendRequest(row._row_id);
-    toast({ title: "Friend added", description: `You and ${row.requested_by} are now friends.` });
-    await load();
-    setBusy(false);
+    if (!currentUsername) return;
+
+    try {
+      await acceptFriendRequest(row._row_id);
+      setReceivedRequests((prev) => prev.filter((r) => r._row_id !== row._row_id));
+      setFriends((prev) => [
+        ...prev,
+        { ...row, status: "accepted" },
+      ]);
+      toast({ title: "Friend added", description: `You are now friends with @${row.user_id}` });
+    } catch (error) {
+      console.log("Error accepting request:", error);
+      toast({ title: "Error", description: "Failed to accept request. Try again.", variant: "destructive" });
+    }
   };
 
-  const handleDecline = async (row: FriendshipRow) => {
-    setBusy(true);
-    await deleteFriendship(row._row_id);
-    await load();
-    setBusy(false);
+  const handleReject = async (row: FriendshipRow) => {
+    if (!currentUsername) return;
+
+    try {
+      await deleteFriendship(row._row_id);
+      setReceivedRequests((prev) => prev.filter((r) => r._row_id !== row._row_id));
+      toast({ title: "Request rejected", description: `Friend request from @${row.user_id} rejected` });
+    } catch (error) {
+      console.log("Error rejecting request:", error);
+      toast({ title: "Error", description: "Failed to reject request. Try again.", variant: "destructive" });
+    }
   };
 
-  const handleCancel = async (row: FriendshipRow) => {
-    setBusy(true);
-    await deleteFriendship(row._row_id);
-    await load();
-    setBusy(false);
+  const removeFriend = async (row: FriendshipRow) => {
+    if (!currentUsername) return;
+
+    try {
+      await deleteFriendship(row._row_id);
+      setFriends((prev) => prev.filter((r) => r._row_id !== row._row_id));
+      toast({ title: "Friend removed", description: `Removed @${row.user_id} from friends` });
+    } catch (error) {
+      console.log("Error removing friend:", error);
+      toast({ title: "Error", description: "Failed to remove friend. Try again.", variant: "destructive" });
+    }
   };
 
-  const handleRemove = async (friend: string) => {
-    setBusy(true);
-    await removeFriend(username, friend);
-    toast({ title: "Friend removed", description: `${friend} was removed from your friends.` });
-    await load();
-    setBusy(false);
+  const getFriendUsername = (row: FriendshipRow): string => {
+    return row.user_id === currentUsername ? row.friend_id : row.user_id;
   };
-
-  const initialOf = (name: string) => name.charAt(0).toUpperCase();
 
   return (
-    <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5" /> Friends
-          </DialogTitle>
-        </DialogHeader>
+    <div className="flex flex-col h-[600px]">
+      {/* Tabs */}
+      <div className="flex border-b">
+        <button
+          onClick={() => setTab("search")}
+          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+            tab === "search"
+              ? "text-primary border-b-2 border-primary"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Search className="w-4 h-4 inline mr-1" />
+          Find friends
+        </button>
+        <button
+          onClick={() => setTab("requests")}
+          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+            tab === "requests"
+              ? "text-primary border-b-2 border-primary"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <UserPlus className="w-4 h-4 inline mr-1" />
+          Requests {receivedRequests.length > 0 && `(${receivedRequests.length})`}
+        </button>
+        <button
+          onClick={() => setTab("friends")}
+          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+            tab === "friends"
+              ? "text-primary border-b-2 border-primary"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <User className="w-4 h-4 inline mr-1" />
+          Friends {friends.length > 0 && `(${friends.length})`}
+        </button>
+      </div>
 
-        {/* Add friend */}
-        {friendsAllowed ? (
-          <div className="flex gap-2">
-            <Input
-              placeholder="Add friend by username"
-              value={addName}
-              onChange={(e) => setAddName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            />
-            <Button size="sm" aria-label="Send friend request" onClick={handleAdd} disabled={busy || !addName.trim()}>
-              <UserPlus className="w-4 h-4" />
-            </Button>
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            Friend requests are turned off by the site admin right now.
-          </p>
-        )}
-
-        {/* Incoming requests */}
-        {incoming.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground">
-              Requests ({incoming.length})
-            </h4>
-            {incoming.map((row) => (
-              <div key={row._row_id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-secondary/50">
-                <span className="text-sm font-medium truncate">{row.requested_by}</span>
-                <div className="flex gap-1">
-                  <Button size="sm" variant="default" aria-label={`Accept ${row.requested_by}`} onClick={() => handleAccept(row)} disabled={busy}>
-                    <Check className="w-4 h-4" />
-                  </Button>
-                  <Button size="sm" variant="outline" aria-label={`Decline ${row.requested_by}`} onClick={() => handleDecline(row)} disabled={busy}>
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Outgoing requests */}
-        {outgoing.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground">Sent</h4>
-            {outgoing.map((row) => (
-              <div key={row._row_id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-secondary/30">
-                <span className="text-sm text-muted-foreground truncate">Waiting on {row.friend_id}</span>
-                <Button size="sm" variant="ghost" onClick={() => handleCancel(row)} disabled={busy}>
-                  Cancel
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Friends list */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground">
-              Your friends ({friends.length})
-            </h4>
-            <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
-          {friends.length === 0 && !loading && (
-            <p className="text-sm text-muted-foreground py-2">
-              No friends yet. Add someone by their username above.
-            </p>
-          )}
-          {friends.map((friend) => (
-            <div key={friend.username} className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-secondary/40">
-              <div
-                className="flex items-center gap-2 min-w-0 cursor-pointer"
-                onClick={() => navigate(`/profile/${friend.username}`)}
-              >
-                <Avatar className="w-8 h-8 border border-white/10">
-                  {friend.profile?.avatar_url ? <AvatarImage src={friend.profile.avatar_url} /> : null}
-                  <AvatarFallback className="bg-primary/20 text-xs">
-                    {initialOf(friend.username)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">
-                    {friend.profile?.display_name || friend.username}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
-                </div>
-              </div>
-              <div className="flex gap-1 shrink-0">
-                {dmsAllowed && (
-                  <Button size="sm" variant="ghost" onClick={() => navigate(`/dm/${friend.username}`)}>
-                    <MessageSquare className="w-4 h-4" />
-                  </Button>
-                )}
-                <Button size="sm" variant="ghost" onClick={() => handleRemove(friend.username)} disabled={busy}>
-                  <UserMinus className="w-4 h-4" />
-                </Button>
-              </div>
+      {/* Content */}
+      <div className="flex-1 overflow-hidden">
+        {tab === "search" && (
+          <div className="h-full flex flex-col p-4">
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name or username..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10 bg-secondary/50"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
-          ))}
-        </div>
-      </DialogContent>
-    </Dialog>
+
+            {isSearching ? (
+              <div className="flex items-center justify-center flex-1">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : searchResults.length === 0 && search ? (
+              <div className="flex items-center justify-center flex-1 text-sm text-muted-foreground">
+                No results found
+              </div>
+            ) : searchResults.length === 0 && !search ? (
+              <div className="flex items-center justify-center flex-1 text-sm text-muted-foreground">
+                Type to search for users
+              </div>
+            ) : (
+              <ScrollArea className="flex-1">
+                <div className="space-y-2 pr-2">
+                  {searchResults.map((profile) => {
+                    const isFriend = friends.some(
+                      (f) => (f.user_id === profile.username || f.friend_id === profile.username) && f.status === "accepted"
+                    );
+                    const requestSent = sentRequests.has(profile.username);
+
+                    return (
+                      <div
+                        key={profile._row_id}
+                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors"
+                      >
+                        <Avatar className="w-10 h-10">
+                          {profile.avatar_url ? (
+                            <AvatarImage src={profile.avatar_url} />
+                          ) : (
+                            <AvatarFallback>{getInitials(profile.display_name || profile.username)}</AvatarFallback>
+                          )}
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{profile.display_name || profile.username}</p>
+                          <p className="text-xs text-muted-foreground truncate">@{profile.username}</p>
+                        </div>
+                        {isFriend ? (
+                          <Button size="sm" variant="ghost" disabled>
+                            <Shield className="w-4 h-4" />
+                          </Button>
+                        ) : requestSent ? (
+                          <Button size="sm" variant="ghost" disabled>
+                            Request sent
+                          </Button>
+                        ) : (
+                          <Button size="sm" onClick={() => sendRequest(profile.username)}>
+                            <UserPlus className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+        )}
+
+        {tab === "requests" && (
+          <ScrollArea className="h-full p-4">
+            {receivedRequests.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                No pending requests
+              </div>
+            ) : (
+              <div className="space-y-2 pr-2">
+                {receivedRequests.map((request) => (
+                  <div
+                    key={request._row_id}
+                    className="flex items-center gap-3 p-2 rounded-lg bg-secondary/30"
+                  >
+                    <Avatar className="w-10 h-10">
+                      <AvatarFallback>{getInitials(request.user_id)}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">@{request.user_id}</p>
+                      <p className="text-xs text-muted-foreground">Wants to be your friend</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => handleAccept(request)}>
+                        Accept
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => handleReject(request)}>
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        )}
+
+        {tab === "friends" && (
+          <ScrollArea className="h-full p-4">
+            {friends.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                No friends yet
+              </div>
+            ) : (
+              <div className="space-y-2 pr-2">
+                {friends.map((friendship) => {
+                  const friendUsername = getFriendUsername(friendship);
+
+                  return (
+                    <div
+                      key={friendship._row_id}
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors"
+                    >
+                      <Avatar className="w-10 h-10">
+                        <AvatarFallback>{getInitials(friendUsername)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">@{friendUsername}</p>
+                        <p className="text-xs text-muted-foreground">Friend</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="ghost" onClick={() => onOpenDirectMessage?.(friendUsername)}>
+                          <MessageCircle className="w-4 h-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => removeFriend(friendship)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+        )}
+      </div>
+    </div>
   );
 };
 

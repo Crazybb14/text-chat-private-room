@@ -17,6 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import { getDeviceId } from "@/lib/deviceId";
@@ -636,22 +637,24 @@ const ChatRoom = () => {
             className="hidden"
             onChange={(e) => void handleFilePicked(e.target.files?.[0])}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="h-10 w-10 shrink-0 self-start mt-0.5"
-            aria-label="Send a file"
-            title="Send a file"
-            disabled={uploadPct !== null}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {uploadPct !== null ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Paperclip className="w-4 h-4" />
-            )}
-          </Button>
+          {settingBool(settings, "public_room_file_sharing") && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 shrink-0 self-start mt-0.5"
+              aria-label="Send a file"
+              title="Send a file"
+              disabled={uploadPct !== null}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploadPct !== null ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Paperclip className="w-4 h-4" />
+              )}
+            </Button>
+          )}
           <Button
             type="submit"
             className="h-10 self-start mt-0.5 px-5"
@@ -686,7 +689,11 @@ const ChatRoom = () => {
         />
       )}
 
-      <FriendsDialog open={friendsOpen} onClose={() => setFriendsOpen(false)} username={username || ""} />
+      <Dialog open={friendsOpen} onOpenChange={setFriendsOpen}>
+        <DialogContent className="max-w-md">
+          <FriendsDialog currentUsername={username || null} onOpenDirectMessage={(targetUsername) => navigate(`/direct-message/${targetUsername}`)} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -72,7 +72,7 @@ const Login = () => {
   }, [navigate]);
 
   if (downtime) {
-    return <DowntimeScreen info={downtime} />;
+    return <DowntimeScreen endTime={downtime.endTime} message={downtime.message} onBypass={() => setDowntime(null)} />;
   }
 
   if (!checked) {

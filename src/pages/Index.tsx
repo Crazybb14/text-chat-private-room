@@ -312,7 +312,7 @@ const Index = () => {
   }
 
   if (phase === "downtime" && downtime) {
-    return <DowntimeScreen info={downtime} />;
+    return <DowntimeScreen endTime={downtime.endTime} message={downtime.message} onBypass={() => setDowntime(null)} />;
   }
 
   if (phase === "finish") {
@@ -588,7 +588,11 @@ const Index = () => {
         </div>
       </footer>
 
-      <FriendsDialog open={friendsOpen} onClose={() => setFriendsOpen(false)} username={username || ""} />
+      <Dialog open={friendsOpen} onOpenChange={setFriendsOpen}>
+        <DialogContent className="max-w-md">
+          <FriendsDialog currentUsername={username || null} onOpenDirectMessage={(targetUsername) => navigate(`/direct-message/${targetUsername}`)} />
+        </DialogContent>
+      </Dialog>
       <PermissionPrompt />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

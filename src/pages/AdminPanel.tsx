@@ -61,6 +61,7 @@ import {
   SETTING_GROUPS,
   suggestPassword,
   useAppSettings,
+  settingBool,
   type SettingValue,
 } from "@/lib/appSettings";
 import { isPresenceOnline, parseSeen, type PresenceRow } from "@/lib/presence";
@@ -77,6 +78,7 @@ import { isOwnerSession } from "@/lib/owner";
 import AdminDirectMessages from "@/components/AdminDirectMessages";
 import AdminNotifications from "@/components/AdminNotifications";
 import AdminManagers, { MakeAdminDialog } from "@/components/AdminManagers";
+import AdminAI from "@/components/AdminAI";
 import {
   canDo,
   clearAdminSession,
@@ -887,6 +889,7 @@ const AdminPanel = () => {
             {can("downtime") && <TabsTrigger value="downtime">Downtime</TabsTrigger>}
             {can("settings") && <TabsTrigger value="settings">Settings</TabsTrigger>}
             {isOwner && <TabsTrigger value="download">Download</TabsTrigger>}
+            {settingBool(settings, "ai_beta_enabled") && <TabsTrigger value="ai">AI (beta)</TabsTrigger>}
           </TabsList>
 
           {/* OVERVIEW */}
@@ -1894,6 +1897,11 @@ const AdminPanel = () => {
               </CardContent>
             </Card>
             ) : NoPermission}
+          </TabsContent>
+
+          {/* AI (beta) */}
+          <TabsContent value="ai" className="space-y-4 mt-4">
+            <AdminAI />
           </TabsContent>
         </Tabs>
       </main>
