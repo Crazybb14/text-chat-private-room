@@ -155,7 +155,7 @@ const Login = () => {
       if (message.includes("email_exists")) {
         setError("An account with this email already exists — try signing in instead.");
       } else if (message.includes("insufficient_password_complexity")) {
-        setError("Password must be at least 8 characters.");
+        setError("That password is too easy to guess or appears in known password lists. Please pick a stronger one.");
       } else {
         setError("Couldn't create your account. Please try again.");
       }

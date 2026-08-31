@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import { getDeviceId } from "@/lib/deviceId";
-import UserManager, { type SessionInfo } from "@/lib/userManagement";
+import UserManager from "@/lib/userManagement";
 import MessageBubble, { type ChatMessage } from "@/components/MessageBubble";
 import NotificationBell from "@/components/NotificationBell";
 import FriendsDialog from "@/components/FriendsDialog";
@@ -51,7 +51,6 @@ const ChatRoom = () => {
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [room, setRoom] = useState<RoomRow | null>(null);
-  const [session, setSession] = useState<SessionInfo | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -208,7 +207,6 @@ const ChatRoom = () => {
           navigate("/", { replace: true });
           return;
         }
-        setSession(currentSession);
         setUsername(currentSession.username);
 
         const bans = await db.query("bans", { username: `eq.${currentSession.username}` });
@@ -267,7 +265,7 @@ const ChatRoom = () => {
     }
   }, [messages]);
 
-  const handleGateSubmit = async (e: FormEvent) => {
+  const handleGateSubmit = async (e: SyntheticEvent) => {
     e.preventDefault();
     if (!roomId || !codeInput.trim()) return;
     setCodeChecking(true);
@@ -287,8 +285,8 @@ const ChatRoom = () => {
     }
   };
 
-  const handleSend = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSend = async (e?: SyntheticEvent) => {
+    e?.preventDefault();
     const content = input.trim();
     if (!content || !roomId || !username) return;
     setSending(true);
@@ -387,7 +385,7 @@ const ChatRoom = () => {
       <header className="border-b border-white/5 shrink-0">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/")} title="Back to rooms">
+            <Button variant="ghost" size="icon" aria-label="Back to rooms" onClick={() => navigate("/")} title="Back to rooms">
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="min-w-0">
@@ -446,6 +444,12 @@ const ChatRoom = () => {
             onChange={(e) => {
               setInput(e.target.value);
               syncTyping(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
             }}
             placeholder={`Message ${room.name}...`}
             maxLength={2000}

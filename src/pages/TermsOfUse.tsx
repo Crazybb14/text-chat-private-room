@@ -57,10 +57,12 @@ const TermsOfUse = () => {
       description: "Thank you for accepting our Terms of Use.",
     });
 
-    // Redirect to username setup
-    setTimeout(() => {
-      navigate('/');
-    }, 1000);
+    // Send them to sign in / create an account (or straight in if already signed in)
+    setTimeout(async () => {
+      const { default: UserManager } = await import("@/lib/userManagement");
+      const session = await UserManager.getSession();
+      navigate(session ? "/" : "/login");
+    }, 800);
   };
 
   const handleDecline = () => {

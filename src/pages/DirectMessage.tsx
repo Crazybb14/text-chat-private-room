@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2, Lock, Send, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -80,8 +80,8 @@ const DirectMessage = () => {
     }
   }, [messages]);
 
-  const handleSend = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSend = async (e?: SyntheticEvent) => {
+    e?.preventDefault();
     const content = input.trim();
     if (!content || !me) return;
     setSending(true);
@@ -190,6 +190,12 @@ const DirectMessage = () => {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder={isFriend ? `Message ${target}...` : "Friends only can message"}
             disabled={!isFriend}
             maxLength={2000}

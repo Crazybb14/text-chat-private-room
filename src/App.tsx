@@ -3,6 +3,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
+import Login from "./pages/Login";
 import TermsOfUse from "./pages/TermsOfUse";
 import ChatRoom from "./pages/ChatRoom";
 import AdminLogin from "./pages/AdminLogin";
@@ -24,6 +25,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/terms" element={<TermsOfUse />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/chat/:roomId" element={<ChatRoom />} />
           <Route path="/admin" element={<AdminLogin />} />
           <Route path="/admin/panel" element={<AdminPanel />} />

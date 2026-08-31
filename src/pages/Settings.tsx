@@ -109,10 +109,8 @@ const Settings = () => {
   };
 
   const handleSignOut = async () => {
-    if (!username) return;
-    await UserManager.clearUsername();
-    localStorage.removeItem("terms_accepted");
-    navigate("/");
+    await UserManager.signOut();
+    navigate("/login");
   };
 
   if (loading) {

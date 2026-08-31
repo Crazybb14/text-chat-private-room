@@ -4,16 +4,17 @@ async function onboard(page: Page, username: string) {
   await page.goto('/');
   await page.getByRole('heading', { name: 'Agreement Overview' }).press('End');
   await page.getByRole('button', { name: 'I AGREE' }).click();
+  // Already signed-in accounts skip the login page and pick their chat username.
   await page.getByLabel('Username', { exact: true }).fill(username);
-  await page.getByRole('button', { name: 'Set Username Permanently' }).click();
-  await expect(page.getByText(`Hey, ${username}`)).toBeVisible();
+  await page.getByRole('button', { name: 'Save username' }).click();
+  await expect(page.getByRole('heading', { name: `Hey, ${username}` })).toBeVisible();
 }
 
 scenario(
   'two users become friends and direct message each other',
   { setup: { users: { alex: {}, sam: {} } } },
   async ({ users }) => {
-    await step('both users sign up', async () => {
+    await step('both users finish setting up', async () => {
       await onboard(users.alex.page, 'dmalex');
       await onboard(users.sam.page, 'dmsam');
     });
@@ -28,7 +29,7 @@ scenario(
     await step('sam accepts the request', async () => {
       await users.sam.page.getByRole('button', { name: 'Friends' }).click();
       await users.sam.page.getByRole('button', { name: 'Accept dmalex' }).click();
-      await expect(users.sam.page.getByText('dmalex').first()).toBeVisible();
+      await expect(users.sam.page.getByRole('heading', { name: 'Your friends (1)' })).toBeVisible();
     });
 
     await step('alex messages sam', async () => {

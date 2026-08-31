@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 
 // Admin password only
-const ADMIN_PASSWORD = "qacgt5555$";
+const ADMIN_PASSWORD = "qacgt5";
 
 const AdminLogin = () => {
   const navigate = useNavigate();

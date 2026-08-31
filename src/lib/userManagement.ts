@@ -103,13 +103,8 @@ class UserManager {
     });
 
     try {
-      await db.insert("account_credentials", {
-        user_id: input.userUuid,
-        username,
-        email: input.email ?? "",
-        first_name: input.firstName.trim(),
-        last_name: input.lastName.trim(),
-      });
+      // The admin-visible record of who signed up is written server-side.
+      await functions.post("record-signup", { username });
     } catch (error) {
       console.error("Failed to record account credentials:", error);
     }
@@ -124,14 +119,8 @@ class UserManager {
       if (sessionStorage.getItem("ip_logged_session") === "1") return;
       const session = await this.getSession();
       if (!session) return;
-      const info = await functions.get<{ ip: string; userAgent: string }>("get-ip");
-      await db.insert("ip_logs", {
-        user_id: session.userUuid,
-        username: username ?? session.username ?? "",
-        email: session.email ?? "",
-        ip: info.ip,
-        user_agent: info.userAgent,
-      });
+      // The server function records the IP itself; browsers can't write that table.
+      await functions.get("get-ip", { username: username ?? session.username ?? "" });
       sessionStorage.setItem("ip_logged_session", "1");
     } catch (error) {
       console.error("IP logging skipped:", error);

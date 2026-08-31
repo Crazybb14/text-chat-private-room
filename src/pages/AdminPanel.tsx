@@ -1,20 +1,25 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   Ban as BanIcon,
   CheckCircle2,
+  DoorOpen,
   Download,
+  Eye,
+  EyeOff,
   Flag,
   Lightbulb,
   Loader2,
+  LogIn,
   LogOut,
   MessageSquare,
   Plus,
   RefreshCw,
   Shield,
   Trash2,
-  Users,
+  UserCog,
+  Wifi,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,11 +27,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
+import auth from "@/lib/shared/kliv-auth.js";
 import { downloadWebsiteZip } from "@/lib/websiteZip";
-import { type UserRow } from "@/lib/userManagement";
+import UserManager, { type SessionInfo } from "@/lib/userManagement";
 
 interface RoomRow {
   _row_id: number;
@@ -39,7 +51,6 @@ interface RoomRow {
 interface BanRow {
   _row_id: number;
   username: string;
-  device_id: string | null;
   room_id: number | null;
   [key: string]: unknown;
 }
@@ -69,6 +80,7 @@ interface MessageRow {
   sender_name: string;
   content: string;
   _created_at: number;
+  impersonated_by?: string | null;
   [key: string]: unknown;
 }
 
@@ -78,6 +90,48 @@ interface DowntimeRow {
   end_time: number;
   reason: string | null;
   is_active: number;
+  [key: string]: unknown;
+}
+
+interface ProfileAccountRow {
+  _row_id: number;
+  user_id: string;
+  username: string;
+  display_name: string;
+  first_name?: string;
+  last_name?: string;
+  _created_at: number;
+  [key: string]: unknown;
+}
+
+interface CredentialRow {
+  _row_id: number;
+  user_id: string;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  _created_at: number;
+  [key: string]: unknown;
+}
+
+interface IpRow {
+  _row_id: number;
+  user_id: string | null;
+  username: string | null;
+  email: string | null;
+  ip: string;
+  user_agent: string | null;
+  _created_at: number;
+  [key: string]: unknown;
+}
+
+interface TypingRow {
+  _row_id: number;
+  room_id: number;
+  username: string;
+  draft: string;
+  updated_at: number;
   [key: string]: unknown;
 }
 
@@ -105,13 +159,17 @@ const AdminPanel = () => {
   const { toast } = useToast();
 
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [session, setSession] = useState<SessionInfo | null | undefined>(undefined);
   const [rooms, setRooms] = useState<RoomRow[]>([]);
-  const [users, setUsers] = useState<UserRow[]>([]);
   const [bans, setBans] = useState<BanRow[]>([]);
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [suggestions, setSuggestions] = useState<SuggestionRow[]>([]);
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [downtimes, setDowntimes] = useState<DowntimeRow[]>([]);
+  const [profiles, setProfiles] = useState<ProfileAccountRow[]>([]);
+  const [credentials, setCredentials] = useState<CredentialRow[]>([]);
+  const [ips, setIps] = useState<IpRow[]>([]);
+  const [ownerDataError, setOwnerDataError] = useState<string | null>(null);
   const [messageRoom, setMessageRoom] = useState<string>("all");
   const [loading, setLoading] = useState(false);
 
@@ -120,6 +178,15 @@ const AdminPanel = () => {
   const [banInput, setBanInput] = useState("");
   const [downtimeHours, setDowntimeHours] = useState("2");
   const [downtimeReason, setDowntimeReason] = useState("");
+
+  const [revealed, setRevealed] = useState<Record<number, boolean>>({});
+  const [liveRoom, setLiveRoom] = useState<string>("");
+  const [liveMessages, setLiveMessages] = useState<MessageRow[]>([]);
+  const [liveTyping, setLiveTyping] = useState<TypingRow[]>([]);
+  const [asUser, setAsUser] = useState("");
+  const [asText, setAsText] = useState("");
+  const [asBusy, setAsBusy] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState<string | null>(null);
 
   useEffect(() => {
     setAuthorized(localStorage.getItem("isAdmin") === "true");
@@ -131,23 +198,39 @@ const AdminPanel = () => {
     }
   }, [authorized, navigate]);
 
+  useEffect(() => {
+    if (authorized !== true) return;
+    let cancelled = false;
+    UserManager.getSession()
+      .then((s) => {
+        if (!cancelled) setSession(s);
+      })
+      .catch(() => {
+        if (!cancelled) setSession(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authorized]);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [roomRows, userRows, banRows, reportRows, suggestionRows, downtimeRows] = await Promise.all([
-        db.query<RoomRow>("rooms", { order: "_row_id.asc" }),
-        db.query<UserRow>("users", { order: "last_active.desc" }),
-        db.query<BanRow>("bans", { order: "_created_at.desc" }),
-        db.query<ReportRow>("user_reports", { order: "_created_at.desc" }),
-        db.query<SuggestionRow>("suggestions", { order: "_created_at.desc" }),
-        db.query<DowntimeRow>("downtime_schedules", { order: "start_time.desc" }),
-      ]);
+      const [roomRows, banRows, reportRows, suggestionRows, downtimeRows, profileRows] =
+        await Promise.all([
+          db.query<RoomRow>("rooms", { order: "_row_id.asc" }),
+          db.query<BanRow>("bans", { order: "_created_at.desc" }),
+          db.query<ReportRow>("user_reports", { order: "_created_at.desc" }),
+          db.query<SuggestionRow>("suggestions", { order: "_created_at.desc" }),
+          db.query<DowntimeRow>("downtime_schedules", { order: "start_time.desc" }),
+          db.query<ProfileAccountRow>("user_profiles", { order: "_created_at.desc" }),
+        ]);
       setRooms(roomRows);
-      setUsers(userRows);
       setBans(banRows);
       setReports(reportRows);
       setSuggestions(suggestionRows);
       setDowntimes(downtimeRows);
+      setProfiles(profileRows);
     } catch (error) {
       console.error("Admin load failed:", error);
       toast({ title: "Couldn't load admin data", variant: "destructive" });
@@ -172,10 +255,63 @@ const AdminPanel = () => {
   }, []);
 
   useEffect(() => {
-    if (authorized) {
+    if (authorized && session) {
       loadMessages();
     }
-  }, [authorized, loadMessages]);
+  }, [authorized, session, loadMessages]);
+
+  const loadOwnerData = useCallback(async () => {
+    setOwnerDataError(null);
+    try {
+      const [credRows, ipRows] = await Promise.all([
+        db.query<CredentialRow>("account_credentials", { order: "_created_at.desc" }),
+        db.query<IpRow>("ip_logs", { order: "_created_at.desc" }),
+      ]);
+      setCredentials(credRows);
+      setIps(ipRows);
+    } catch {
+      setOwnerDataError("Couldn't load account and IP data.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (session?.isPrimaryTeam) {
+      loadOwnerData();
+    }
+  }, [session, loadOwnerData]);
+
+  const loadLive = useCallback(async () => {
+    if (!liveRoom) return;
+    try {
+      const [msgRows, typingRows] = await Promise.all([
+        db.query<MessageRow>("messages", {
+          room_id: `eq.${liveRoom}`,
+          order: "_created_at.desc",
+          limit: "50",
+        }),
+        db.query<TypingRow>("typing_status", { room_id: `eq.${liveRoom}` }),
+      ]);
+      setLiveMessages(msgRows);
+      setLiveTyping(
+        typingRows.filter((t) => t.draft && Date.now() - Number(t.updated_at) < 15000)
+      );
+    } catch {
+      // best-effort live view
+    }
+  }, [liveRoom]);
+
+  useEffect(() => {
+    if (!authorized || !session || !liveRoom) return;
+    loadLive();
+    const timer = setInterval(loadLive, 2500);
+    return () => clearInterval(timer);
+  }, [authorized, session, liveRoom, loadLive]);
+
+  useEffect(() => {
+    if (!liveRoom && rooms.length > 0) {
+      setLiveRoom(String(rooms[0]._row_id));
+    }
+  }, [rooms, liveRoom]);
 
   const roomName = (id: number) => rooms.find((r) => r._row_id === id)?.name ?? `Room #${id}`;
   const bannedUsernames = new Set(bans.map((b) => b.username));
@@ -203,21 +339,28 @@ const AdminPanel = () => {
     loadMessages();
   };
 
+  const handleOpenRoom = (room: RoomRow) => {
+    // Admins skip the private-room code gate
+    sessionStorage.setItem(`room_unlocked_${room._row_id}`, "1");
+    navigate(`/chat/${room._row_id}`);
+  };
+
   const handleDeleteMessage = async (row: MessageRow) => {
     await db.deleteOne("messages", { _row_id: `eq.${row._row_id}` });
     loadMessages();
+    loadLive();
   };
 
   const handleBanUser = async (usernameRaw: string) => {
     const username = usernameRaw.trim().toLowerCase();
     if (!username) return;
-    const user = users.find((u) => u.username === username);
     await db.insert("bans", {
       username,
-      device_id: user?.device_id ?? null,
+      device_id: null,
       room_id: null,
     });
     toast({ title: "Banned", description: `${username} is now banned from the site.` });
+    setBanInput("");
     loadAll();
   };
 
@@ -241,6 +384,70 @@ const AdminPanel = () => {
   const handleDeleteSuggestion = async (row: SuggestionRow) => {
     await db.deleteOne("suggestions", { _row_id: `eq.${row._row_id}` });
     loadAll();
+  };
+
+  const handleSendAs = async () => {
+    if (!liveRoom || !asUser.trim() || !asText.trim()) return;
+    setAsBusy(true);
+    try {
+      const target = asUser.trim().toLowerCase();
+      await db.insert("messages", {
+        room_id: Number(liveRoom),
+        sender_name: target,
+        content: asText.trim().slice(0, 2000),
+        device_id: null,
+        is_ai: 0,
+        impersonated_by: session?.username ?? session?.email ?? "admin",
+      });
+      setAsText("");
+      toast({
+        title: "Message sent",
+        description: `It now appears in the chat as @${target}.`,
+      });
+      loadLive();
+      loadMessages();
+    } catch {
+      toast({ title: "Couldn't send that message", variant: "destructive" });
+    } finally {
+      setAsBusy(false);
+    }
+  };
+
+  const handleDeleteAccount = async (userId: string, username: string) => {
+    if (!window.confirm(`Delete @${username}'s account and all their chat data?`)) return;
+    setDeletingAccount(userId);
+    try {
+      try {
+        await auth.deleteUser(userId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        toast({
+          title: "Chat data removed, login kept",
+          description: message.includes("forbidden")
+            ? "Deleting the login itself needs owner-level account permissions. Their profile and messages were removed."
+            : "Their profile and messages were removed, but the login itself couldn't be deleted from here.",
+        });
+      }
+      await Promise.allSettled([
+        db.delete("user_profiles", { user_id: `eq.${userId}` }),
+        db.delete("account_credentials", { user_id: `eq.${userId}` }),
+        db.delete("messages", { sender_name: `eq.${username}` }),
+        db.delete("direct_messages", { sender_username: `eq.${username}` }),
+        db.delete("direct_messages", { recipient_username: `eq.${username}` }),
+        db.delete("friendships", { user_id: `eq.${username}` }),
+        db.delete("friendships", { friend_id: `eq.${username}` }),
+        db.delete("online_users", { username: `eq.${username}` }),
+        db.delete("typing_status", { username: `eq.${username}` }),
+        db.delete("bans", { username: `eq.${username}` }),
+      ]);
+      toast({ title: `Deleted @${username}` });
+    } finally {
+      setDeletingAccount(null);
+      loadAll();
+      if (session?.isPrimaryTeam) {
+        loadOwnerData();
+      }
+    }
   };
 
   const handleStartDowntime = async () => {
@@ -280,11 +487,86 @@ const AdminPanel = () => {
     );
   }
 
+  const SignInGate = (
+    <Card>
+      <CardContent className="py-10 text-center space-y-3">
+        <LogIn className="w-8 h-8 mx-auto text-muted-foreground" />
+        <p className="font-semibold">Sign-in required</p>
+        <p className="text-sm text-muted-foreground max-w-md mx-auto">
+          This tab reads live chat data, which only signed-in accounts can see. Sign in with the
+          site owner's account, then come back to the admin panel.
+        </p>
+        <Button onClick={() => navigate("/login")}>
+          <LogIn className="w-4 h-4 mr-2" /> Go to sign in
+        </Button>
+      </CardContent>
+    </Card>
+  );
+
+  const OwnerGate = (
+    <Card>
+      <CardContent className="py-10 text-center space-y-2">
+        <Shield className="w-8 h-8 mx-auto text-muted-foreground" />
+        <p className="font-semibold">Site owner only</p>
+        <p className="text-sm text-muted-foreground max-w-md mx-auto">
+          Account details and IP addresses are only visible when you're signed in as the site
+          owner's own login.
+        </p>
+      </CardContent>
+    </Card>
+  );
+
+  const withSignIn = (content: ReactNode) =>
+    session === undefined ? (
+      <p className="text-sm text-muted-foreground py-8 text-center">Checking your sign-in…</p>
+    ) : session === null ? (
+      SignInGate
+    ) : (
+      content
+    );
+
+  const withOwner = (content: ReactNode) =>
+    session === undefined ? (
+      <p className="text-sm text-muted-foreground py-8 text-center">Checking your sign-in…</p>
+    ) : session === null ? (
+      SignInGate
+    ) : !session.isPrimaryTeam ? (
+      OwnerGate
+    ) : (
+      content
+    );
+
   const now = Date.now();
-  const activeDowntime = downtimes.find((d) => d.is_active === 1 && now >= d.start_time && now < d.end_time);
+  const activeDowntime = downtimes.find(
+    (d) => d.is_active === 1 && now >= d.start_time && now < d.end_time
+  );
   const pendingReports = reports.filter((r) => r.status === "pending").length;
   const filteredMessages =
     messageRoom === "all" ? messages : messages.filter((m) => String(m.room_id) === messageRoom);
+
+  const accounts = profiles.map((p) => {
+    const cred = credentials.find((c) => c.user_id === p.user_id);
+    const name =
+      [cred?.first_name ?? p.first_name ?? "", cred?.last_name ?? p.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ") || p.display_name || "";
+    return {
+      userId: p.user_id,
+      username: p.username,
+      name,
+      email: cred?.email ?? null,
+      joined: Number(p._created_at),
+      lastIp: ips.find((i) => i.user_id === p.user_id)?.ip ?? null,
+    };
+  });
+
+  const liveRoomName = liveRoom ? roomName(Number(liveRoom)) : "";
+  const suggestUsers = [
+    ...new Set([
+      ...liveTyping.map((t) => t.username),
+      ...liveMessages.slice(0, 20).map((m) => m.sender_name),
+    ]),
+  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -294,6 +576,11 @@ const AdminPanel = () => {
             <Shield className="w-5 h-5 text-primary" />
             <h1 className="font-bold">Admin Panel</h1>
             {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+            {session && (
+              <Badge variant={session.isPrimaryTeam ? "default" : "secondary"} className="ml-2">
+                {session.isPrimaryTeam ? "owner" : session.email ?? "signed in"}
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
@@ -311,8 +598,10 @@ const AdminPanel = () => {
           <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="rooms">Rooms</TabsTrigger>
+            <TabsTrigger value="live">Live</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
-            <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="accounts">Accounts</TabsTrigger>
+            <TabsTrigger value="ips">IP Logs</TabsTrigger>
             <TabsTrigger value="bans">Bans</TabsTrigger>
             <TabsTrigger value="reports">
               Reports {pendingReports > 0 && <Badge className="ml-1 h-4 px-1.5">{pendingReports}</Badge>}
@@ -327,7 +616,7 @@ const AdminPanel = () => {
             <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
               {[
                 { label: "Rooms", value: rooms.length, icon: MessageSquare },
-                { label: "Users", value: users.length, icon: Users },
+                { label: "Accounts", value: profiles.length, icon: UserCog },
                 { label: "Messages (last 100)", value: messages.length, icon: MessageSquare },
                 { label: "Active bans", value: bans.length, icon: BanIcon },
               ].map((stat) => (
@@ -342,6 +631,27 @@ const AdminPanel = () => {
                 </Card>
               ))}
             </div>
+            <Card>
+              <CardContent className="py-4 space-y-2">
+                <p className="font-semibold">Viewing as</p>
+                {session === undefined && (
+                  <p className="text-sm text-muted-foreground">Checking your sign-in…</p>
+                )}
+                {session === null && (
+                  <p className="text-sm text-muted-foreground">
+                    Not signed in — data tabs are locked until you sign in with the site owner's
+                    account.
+                  </p>
+                )}
+                {session && (
+                  <p className="text-sm text-muted-foreground">
+                    {session.isPrimaryTeam ? "Site owner — " : ""}
+                    {session.email ?? "unknown email"}
+                    {session.username ? ` · chatting as @${session.username}` : " · no chat username yet"}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
             <Card>
               <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
                 <div>
@@ -372,318 +682,588 @@ const AdminPanel = () => {
 
           {/* ROOMS */}
           <TabsContent value="rooms" className="space-y-4 mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Create a room</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex gap-2 flex-wrap">
-                  <Input
-                    placeholder="Room name"
-                    value={newRoomName}
-                    onChange={(e) => setNewRoomName(e.target.value)}
-                    className="flex-1 min-w-48"
-                  />
-                  <Select value={newRoomType} onValueChange={setNewRoomType}>
-                    <SelectTrigger className="w-44">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="public">Public</SelectItem>
-                      <SelectItem value="private">Private</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button onClick={handleCreateRoom} disabled={!newRoomName.trim()}>
-                    <Plus className="w-4 h-4 mr-2" /> Create
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-            <div className="space-y-2">
-              {rooms.map((room) => (
-                <Card key={room._row_id}>
-                  <CardContent className="py-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold truncate">{room.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {room.type === "private" ? `Private — code ${room.code}` : "Public"} · Room #
-                        {room._row_id}
-                      </p>
+            {withSignIn(
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Create a room</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex gap-2 flex-wrap">
+                      <Input
+                        placeholder="Room name"
+                        value={newRoomName}
+                        onChange={(e) => setNewRoomName(e.target.value)}
+                        className="flex-1 min-w-48"
+                      />
+                      <Select value={newRoomType} onValueChange={setNewRoomType}>
+                        <SelectTrigger className="w-44">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="public">Public</SelectItem>
+                          <SelectItem value="private">Private</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button onClick={handleCreateRoom} disabled={!newRoomName.trim()}>
+                        <Plus className="w-4 h-4 mr-2" /> Create
+                      </Button>
                     </div>
-                    <Button variant="destructive" size="sm" onClick={() => handleDeleteRoom(room)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
                   </CardContent>
                 </Card>
-              ))}
-              {rooms.length === 0 && <p className="text-sm text-muted-foreground">No rooms yet.</p>}
-            </div>
+                <div className="space-y-2">
+                  {rooms.map((room) => (
+                    <Card key={room._row_id}>
+                      <CardContent className="py-3 flex items-center justify-between gap-3 flex-wrap">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{room.name}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                            <span>
+                              {room.type === "private" ? "Private" : "Public"} · Room #{room._row_id}
+                            </span>
+                            {room.type === "private" && (
+                              <span className="inline-flex items-center gap-1">
+                                · Code:
+                                <code className="font-mono bg-secondary px-1.5 py-0.5 rounded">
+                                  {revealed[room._row_id] ? room.code : "••••••"}
+                                </code>
+                                <button
+                                  type="button"
+                                  className="text-muted-foreground hover:text-foreground"
+                                  aria-label={revealed[room._row_id] ? "Hide room code" : "Show room code"}
+                                  onClick={() =>
+                                    setRevealed((prev) => ({ ...prev, [room._row_id]: !prev[room._row_id] }))
+                                  }
+                                >
+                                  {revealed[room._row_id] ? (
+                                    <EyeOff className="w-4 h-4" />
+                                  ) : (
+                                    <Eye className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" onClick={() => handleOpenRoom(room)}>
+                            <DoorOpen className="w-4 h-4 mr-2" /> Open room
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => handleDeleteRoom(room)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {rooms.length === 0 && <p className="text-sm text-muted-foreground">No rooms yet.</p>}
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          {/* LIVE */}
+          <TabsContent value="live" className="space-y-4 mt-4">
+            {withSignIn(
+              <>
+                <Card>
+                  <CardContent className="py-4 space-y-3">
+                    <Label>Watch a room live</Label>
+                    <div className="flex gap-2 flex-wrap items-center">
+                      <Select value={liveRoom} onValueChange={setLiveRoom}>
+                        <SelectTrigger className="w-64">
+                          <SelectValue placeholder="Pick a room" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {rooms.map((room) => (
+                            <SelectItem key={room._row_id} value={String(room._row_id)}>
+                              {room.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" size="sm" onClick={loadLive}>
+                        <RefreshCw className="w-4 h-4 mr-2" /> Refresh now
+                      </Button>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Wifi className="w-3.5 h-3.5" /> auto-refreshes every few seconds
+                      </span>
+                    </div>
+                    {!liveRoom && <p className="text-xs text-muted-foreground">No rooms exist yet.</p>}
+                  </CardContent>
+                </Card>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Messages — {liveRoomName}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 max-h-[420px] overflow-y-auto">
+                      {liveMessages.map((message) => (
+                        <div
+                          key={message._row_id}
+                          className="flex items-start justify-between gap-2 border-b border-white/5 pb-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">
+                              <span className="font-semibold text-foreground">@{message.sender_name}</span>{" "}
+                              · {fmtTime(message._created_at)}
+                              {message.impersonated_by && (
+                                <Badge variant="secondary" className="ml-2 h-4 px-1.5">
+                                  sent as
+                                </Badge>
+                              )}
+                            </p>
+                            <p className="text-sm break-words">{message.content}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteMessage(message)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      {liveMessages.length === 0 && (
+                        <p className="text-sm text-muted-foreground">No messages in this room yet.</p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <div className="space-y-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Wifi className="w-4 h-4" /> Typing right now
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {liveTyping.map((t) => (
+                          <div key={t._row_id} className="text-sm border-b border-white/5 pb-2">
+                            <span className="font-semibold">@{t.username}</span>
+                            <span className="text-muted-foreground"> is writing: </span>
+                            <span className="italic break-words">"{t.draft}"</span>
+                          </div>
+                        ))}
+                        {liveTyping.length === 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            Nobody is typing at the moment.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">Send a message as someone else</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="as-user">Send as (username)</Label>
+                          <Input
+                            id="as-user"
+                            placeholder="username"
+                            value={asUser}
+                            onChange={(e) => setAsUser(e.target.value.toLowerCase())}
+                          />
+                          {suggestUsers.length > 0 && (
+                            <div className="flex gap-1 flex-wrap">
+                              {suggestUsers.slice(0, 8).map((u) => (
+                                <button
+                                  key={u}
+                                  type="button"
+                                  className="text-xs bg-secondary px-2 py-1 rounded hover:bg-secondary/70"
+                                  onClick={() => setAsUser(u)}
+                                >
+                                  @{u}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="as-text">Their message</Label>
+                          <Input
+                            id="as-text"
+                            placeholder="What they 'say'…"
+                            value={asText}
+                            onChange={(e) => setAsText(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleSendAs()}
+                            maxLength={2000}
+                          />
+                        </div>
+                        <Button onClick={handleSendAs} disabled={asBusy || !asUser.trim() || !asText.trim()}>
+                          {asBusy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                          Send as @{asUser.trim() || "user"}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          The message appears in the room under that person's name, exactly like
+                          their own messages.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </>
+            )}
           </TabsContent>
 
           {/* MESSAGES */}
           <TabsContent value="messages" className="space-y-4 mt-4">
-            <Card>
-              <CardContent className="py-4 space-y-3">
-                <Label>Filter by room</Label>
-                <div className="flex gap-2 flex-wrap items-center">
-                  <Select value={messageRoom} onValueChange={setMessageRoom}>
-                    <SelectTrigger className="w-64">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All rooms</SelectItem>
-                      {rooms.map((room) => (
-                        <SelectItem key={room._row_id} value={String(room._row_id)}>
-                          {room.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" size="sm" onClick={loadMessages}>
-                    <RefreshCw className="w-4 h-4 mr-2" /> Refresh
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-            <div className="space-y-2">
-              {filteredMessages.map((message) => (
-                <Card key={message._row_id}>
-                  <CardContent className="py-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">
-                        <span className="font-semibold text-foreground">{message.sender_name}</span> in{" "}
-                        {roomName(message.room_id)} · {fmtTime(message._created_at)}
-                      </p>
-                      <p className="text-sm break-words">{message.content}</p>
+            {withSignIn(
+              <>
+                <Card>
+                  <CardContent className="py-4 space-y-3">
+                    <Label>Filter by room</Label>
+                    <div className="flex gap-2 flex-wrap items-center">
+                      <Select value={messageRoom} onValueChange={setMessageRoom}>
+                        <SelectTrigger className="w-64">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All rooms</SelectItem>
+                          {rooms.map((room) => (
+                            <SelectItem key={room._row_id} value={String(room._row_id)}>
+                              {room.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" size="sm" onClick={loadMessages}>
+                        <RefreshCw className="w-4 h-4 mr-2" /> Refresh
+                      </Button>
                     </div>
-                    <Button variant="destructive" size="sm" onClick={() => handleDeleteMessage(message)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
                   </CardContent>
                 </Card>
-              ))}
-              {filteredMessages.length === 0 && (
-                <p className="text-sm text-muted-foreground">No messages found.</p>
-              )}
-            </div>
+                <div className="space-y-2">
+                  {filteredMessages.map((message) => (
+                    <Card key={message._row_id}>
+                      <CardContent className="py-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground">
+                            <span className="font-semibold text-foreground">{message.sender_name}</span> in{" "}
+                            {roomName(message.room_id)} · {fmtTime(message._created_at)}
+                            {message.impersonated_by && (
+                              <Badge variant="secondary" className="ml-2 h-4 px-1.5">
+                                sent as
+                              </Badge>
+                            )}
+                          </p>
+                          <p className="text-sm break-words">{message.content}</p>
+                        </div>
+                        <Button variant="destructive" size="sm" onClick={() => handleDeleteMessage(message)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {filteredMessages.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No messages found.</p>
+                  )}
+                </div>
+              </>
+            )}
           </TabsContent>
 
-          {/* USERS */}
-          <TabsContent value="users" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              {users.map((user) => (
-                <Card key={user._row_id}>
-                  <CardContent className="py-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold truncate">
-                        @{user.username}{" "}
-                        {bannedUsernames.has(user.username) && <Badge variant="destructive">banned</Badge>}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Last active {fmtTime(user.last_active)} · First seen {fmtTime(user.first_seen)}
-                      </p>
-                    </div>
-                    {bannedUsernames.has(user.username) ? (
-                      <Button variant="outline" size="sm" onClick={() => handleUnban(user.username)}>
-                        Unban
-                      </Button>
-                    ) : (
-                      <Button variant="destructive" size="sm" onClick={() => handleBanUser(user.username)}>
-                        Ban
-                      </Button>
-                    )}
+          {/* ACCOUNTS */}
+          <TabsContent value="accounts" className="space-y-4 mt-4">
+            {withOwner(
+              <>
+                {ownerDataError && (
+                  <Card>
+                    <CardContent className="py-3 text-sm text-destructive">{ownerDataError}</CardContent>
+                  </Card>
+                )}
+                <Card>
+                  <CardContent className="py-3 text-xs text-muted-foreground">
+                    Every account created on the site. Passwords are stored securely and can never
+                    be viewed — not even here. Emails and IPs are only visible to the site owner.
                   </CardContent>
                 </Card>
-              ))}
-              {users.length === 0 && <p className="text-sm text-muted-foreground">No users yet.</p>}
-            </div>
+                <div className="space-y-2">
+                  {accounts.map((acct) => (
+                    <Card key={acct.userId}>
+                      <CardContent className="py-3 flex items-start justify-between gap-3 flex-wrap">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">
+                            @{acct.username}{" "}
+                            {bannedUsernames.has(acct.username) && <Badge variant="destructive">banned</Badge>}
+                          </p>
+                          <p className="text-xs text-muted-foreground break-words">
+                            {acct.name || "No name"} · {acct.email ?? "email hidden"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Joined {fmtTime(acct.joined)}
+                            {acct.lastIp ? ` · Last IP ${acct.lastIp}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {bannedUsernames.has(acct.username) ? (
+                            <Button variant="outline" size="sm" onClick={() => handleUnban(acct.username)}>
+                              Unban
+                            </Button>
+                          ) : (
+                            <Button variant="destructive" size="sm" onClick={() => handleBanUser(acct.username)}>
+                              <BanIcon className="w-4 h-4 mr-2" /> Ban
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={deletingAccount === acct.userId}
+                            onClick={() => handleDeleteAccount(acct.userId, acct.username)}
+                          >
+                            {deletingAccount === acct.userId ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {accounts.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No accounts yet.</p>
+                  )}
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          {/* IP LOGS */}
+          <TabsContent value="ips" className="space-y-4 mt-4">
+            {withOwner(
+              <>
+                <Card>
+                  <CardContent className="py-3 text-xs text-muted-foreground">
+                    IP address recorded automatically each time someone signs in or creates an
+                    account (once per browser session).
+                  </CardContent>
+                </Card>
+                <div className="space-y-2">
+                  {ips.slice(0, 100).map((row) => (
+                    <Card key={row._row_id}>
+                      <CardContent className="py-3 space-y-1">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <p className="text-sm">
+                            <span className="font-semibold">@{row.username || "unknown"}</span>
+                            {row.email ? ` · ${row.email}` : ""}
+                          </p>
+                          <code className="font-mono text-sm bg-secondary px-2 py-1 rounded">{row.ip}</code>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {fmtTime(Number(row._created_at))} · {row.user_agent?.slice(0, 90) ?? "unknown device"}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {ips.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No IP records yet.</p>
+                  )}
+                </div>
+              </>
+            )}
           </TabsContent>
 
           {/* BANS */}
           <TabsContent value="bans" className="space-y-4 mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Ban a user by username</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="username"
-                    value={banInput}
-                    onChange={(e) => setBanInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleBanUser(banInput)}
-                  />
-                  <Button variant="destructive" onClick={() => handleBanUser(banInput)} disabled={!banInput.trim()}>
-                    <BanIcon className="w-4 h-4 mr-2" /> Ban
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-            <div className="space-y-2">
-              {bans.map((ban) => (
-                <Card key={ban._row_id}>
-                  <CardContent className="py-3 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold">@{ban.username}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Banned {fmtTime(Number(ban._created_at))}
-                        {ban.room_id !== null && typeof ban.room_id === "number"
-                          ? ` · Room #${ban.room_id}`
-                          : " · Site-wide"}
-                      </p>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => handleUnban(ban.username)}>
-                      Unban
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-              {bans.length === 0 && <p className="text-sm text-muted-foreground">No active bans.</p>}
-            </div>
-          </TabsContent>
-
-          {/* REPORTS */}
-          <TabsContent value="reports" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              {reports.map((report) => (
-                <Card key={report._row_id}>
-                  <CardContent className="py-3 space-y-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm">
-                          <Flag className="w-4 h-4 inline mr-1 text-destructive" />
-                          <span className="font-semibold">@{report.reported_username}</span> reported by @
-                          {report.reporter_username}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Reason: {report.report_reason}
-                          {report.custom_reason ? ` — ${report.custom_reason}` : ""}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{fmtTime(report._created_at)}</p>
-                      </div>
-                      <Badge variant={report.status === "resolved" ? "secondary" : "destructive"}>
-                        {report.status}
-                      </Badge>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      {report.status !== "resolved" && (
-                        <Button variant="outline" size="sm" onClick={() => handleResolveReport(report)}>
-                          <CheckCircle2 className="w-4 h-4 mr-2" /> Resolve
-                        </Button>
-                      )}
-                      {!bannedUsernames.has(report.reported_username) && (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleBanUser(report.reported_username)}
-                        >
-                          <BanIcon className="w-4 h-4 mr-2" /> Ban @{report.reported_username}
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteReport(report)}>
-                        <Trash2 className="w-4 h-4 mr-2" /> Delete
+            {withSignIn(
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Ban a user by username</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="username"
+                        value={banInput}
+                        onChange={(e) => setBanInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleBanUser(banInput)}
+                      />
+                      <Button variant="destructive" onClick={() => handleBanUser(banInput)} disabled={!banInput.trim()}>
+                        <BanIcon className="w-4 h-4 mr-2" /> Ban
                       </Button>
                     </div>
                   </CardContent>
                 </Card>
-              ))}
-              {reports.length === 0 && <p className="text-sm text-muted-foreground">No reports.</p>}
-            </div>
+                <div className="space-y-2">
+                  {bans.map((ban) => (
+                    <Card key={ban._row_id}>
+                      <CardContent className="py-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">@{ban.username}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Banned {fmtTime(Number(ban._created_at))}
+                            {ban.room_id !== null && typeof ban.room_id === "number"
+                              ? ` · Room #${ban.room_id}`
+                              : " · Site-wide"}
+                          </p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handleUnban(ban.username)}>
+                          Unban
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {bans.length === 0 && <p className="text-sm text-muted-foreground">No active bans.</p>}
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          {/* REPORTS */}
+          <TabsContent value="reports" className="space-y-4 mt-4">
+            {withSignIn(
+              <>
+                <div className="space-y-2">
+                  {reports.map((report) => (
+                    <Card key={report._row_id}>
+                      <CardContent className="py-3 space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm">
+                              <Flag className="w-4 h-4 inline mr-1 text-destructive" />
+                              <span className="font-semibold">@{report.reported_username}</span> reported by @
+                              {report.reporter_username}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              Reason: {report.report_reason}
+                              {report.custom_reason ? ` — ${report.custom_reason}` : ""}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{fmtTime(report._created_at)}</p>
+                          </div>
+                          <Badge variant={report.status === "resolved" ? "secondary" : "destructive"}>
+                            {report.status}
+                          </Badge>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                          {report.status !== "resolved" && (
+                            <Button variant="outline" size="sm" onClick={() => handleResolveReport(report)}>
+                              <CheckCircle2 className="w-4 h-4 mr-2" /> Resolve
+                            </Button>
+                          )}
+                          {!bannedUsernames.has(report.reported_username) && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleBanUser(report.reported_username)}
+                            >
+                              <BanIcon className="w-4 h-4 mr-2" /> Ban @{report.reported_username}
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteReport(report)}>
+                            <Trash2 className="w-4 h-4 mr-2" /> Delete
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {reports.length === 0 && <p className="text-sm text-muted-foreground">No reports.</p>}
+                </div>
+              </>
+            )}
           </TabsContent>
 
           {/* SUGGESTIONS */}
           <TabsContent value="suggestions" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              {suggestions.map((suggestion) => (
-                <Card key={suggestion._row_id}>
-                  <CardContent className="py-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm break-words">
-                        <Lightbulb className="w-4 h-4 inline mr-1 text-yellow-500" />
-                        {suggestion.content}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        From @{suggestion.username} · {fmtTime(suggestion._created_at)}
-                      </p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteSuggestion(suggestion)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-              {suggestions.length === 0 && <p className="text-sm text-muted-foreground">No suggestions.</p>}
-            </div>
+            {withSignIn(
+              <>
+                <div className="space-y-2">
+                  {suggestions.map((suggestion) => (
+                    <Card key={suggestion._row_id}>
+                      <CardContent className="py-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm break-words">
+                            <Lightbulb className="w-4 h-4 inline mr-1 text-yellow-500" />
+                            {suggestion.content}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            From @{suggestion.username} · {fmtTime(suggestion._created_at)}
+                          </p>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteSuggestion(suggestion)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {suggestions.length === 0 && <p className="text-sm text-muted-foreground">No suggestions.</p>}
+                </div>
+              </>
+            )}
           </TabsContent>
 
           {/* DOWNTIME */}
           <TabsContent value="downtime" className="space-y-4 mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {activeDowntime ? "Downtime is currently ENABLED" : "Schedule downtime"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {activeDowntime && (
-                  <p className="text-sm text-muted-foreground">
-                    Until {fmtTime(activeDowntime.end_time)}
-                    {activeDowntime.reason ? ` — ${activeDowntime.reason}` : ""}
-                  </p>
-                )}
-                <div className="flex gap-2 flex-wrap items-end">
-                  <div className="space-y-1">
-                    <Label htmlFor="dt-hours">Hours</Label>
-                    <Input
-                      id="dt-hours"
-                      type="number"
-                      min="0.1"
-                      step="0.5"
-                      value={downtimeHours}
-                      onChange={(e) => setDowntimeHours(e.target.value)}
-                      className="w-24"
-                    />
-                  </div>
-                  <div className="space-y-1 flex-1 min-w-48">
-                    <Label htmlFor="dt-reason">Reason (optional)</Label>
-                    <Input
-                      id="dt-reason"
-                      placeholder="Scheduled maintenance"
-                      value={downtimeReason}
-                      onChange={(e) => setDowntimeReason(e.target.value)}
-                    />
-                  </div>
-                  <Button onClick={handleStartDowntime}>Start downtime</Button>
-                  {activeDowntime && (
-                    <Button variant="destructive" onClick={handleEndDowntime}>
-                      End downtime now
-                    </Button>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  While downtime is on, every visitor sees a full-screen maintenance page with a
-                  countdown until it ends.
-                </p>
-              </CardContent>
-            </Card>
-            <div className="space-y-2">
-              {downtimes.slice(0, 10).map((row) => (
-                <Card key={row._row_id}>
-                  <CardContent className="py-3 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm">
-                        {fmtTime(row.start_time)} → {fmtTime(row.end_time)}
+            {withSignIn(
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      {activeDowntime ? "Downtime is currently ENABLED" : "Schedule downtime"}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {activeDowntime && (
+                      <p className="text-sm text-muted-foreground">
+                        Until {fmtTime(activeDowntime.end_time)}
+                        {activeDowntime.reason ? ` — ${activeDowntime.reason}` : ""}
                       </p>
-                      <p className="text-xs text-muted-foreground">{row.reason || "No reason given"}</p>
+                    )}
+                    <div className="flex gap-2 flex-wrap items-end">
+                      <div className="space-y-1">
+                        <Label htmlFor="dt-hours">Hours</Label>
+                        <Input
+                          id="dt-hours"
+                          type="number"
+                          min="0.1"
+                          step="0.5"
+                          value={downtimeHours}
+                          onChange={(e) => setDowntimeHours(e.target.value)}
+                          className="w-24"
+                        />
+                      </div>
+                      <div className="space-y-1 flex-1 min-w-48">
+                        <Label htmlFor="dt-reason">Reason (optional)</Label>
+                        <Input
+                          id="dt-reason"
+                          placeholder="Scheduled maintenance"
+                          value={downtimeReason}
+                          onChange={(e) => setDowntimeReason(e.target.value)}
+                        />
+                      </div>
+                      <Button onClick={handleStartDowntime}>Start downtime</Button>
+                      {activeDowntime && (
+                        <Button variant="destructive" onClick={handleEndDowntime}>
+                          End downtime now
+                        </Button>
+                      )}
                     </div>
-                    <Badge variant={row.is_active === 1 ? "destructive" : "secondary"}>
-                      {row.is_active === 1 ? "active" : "ended"}
-                    </Badge>
+                    <p className="text-xs text-muted-foreground">
+                      While downtime is on, every visitor sees a full-screen maintenance page with a
+                      countdown until it ends.
+                    </p>
                   </CardContent>
                 </Card>
-              ))}
-              {downtimes.length === 0 && <p className="text-sm text-muted-foreground">No downtime history.</p>}
-            </div>
+                <div className="space-y-2">
+                  {downtimes.slice(0, 10).map((row) => (
+                    <Card key={row._row_id}>
+                      <CardContent className="py-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm">
+                            {fmtTime(row.start_time)} → {fmtTime(row.end_time)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{row.reason || "No reason given"}</p>
+                        </div>
+                        <Badge variant={row.is_active === 1 ? "destructive" : "secondary"}>
+                          {row.is_active === 1 ? "active" : "ended"}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {downtimes.length === 0 && <p className="text-sm text-muted-foreground">No downtime history.</p>}
+                </div>
+              </>
+            )}
           </TabsContent>
 
           {/* DOWNLOAD */}

@@ -70,7 +70,7 @@ export async function sendFriendRequest(
     return { ok: false, message: "You can't add yourself as a friend." };
   }
 
-  const target = await db.query<{ username: string }>("users", { username: `eq.${them}` });
+  const target = await db.query<{ username: string }>("user_profiles", { username: `eq.${them}` });
   if (target.length === 0) {
     return { ok: false, message: `No user named "${them}" was found.` };
   }

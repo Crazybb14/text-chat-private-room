@@ -38,8 +38,7 @@ const Profile = () => {
     setMe(myUser);
     const p = await getProfile(username);
     setProfile(p);
-    const userRows = await db.query<{ first_seen: number }>("users", { username: `eq.${username}` });
-    setFirstSeen(userRows[0]?.first_seen ?? null);
+    setFirstSeen(p && p._created_at ? Number(p._created_at) : null);
     if (myUser) {
       setRelationship(await getRelationship(myUser, username));
     }

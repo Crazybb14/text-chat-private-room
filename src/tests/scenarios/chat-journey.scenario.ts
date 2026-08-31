@@ -1,32 +1,34 @@
-import { scenario, step, expect, type Page } from 'kliv-scenario';
+import { scenario, step, expect } from 'kliv-scenario';
 
 /**
- * Full signup-to-chat journey: a brand-new visitor accepts the terms, picks a
- * username, creates a room, and sends a message that appears in the room.
+ * Full signup-to-chat journey: a brand-new visitor accepts the terms, lands on
+ * the login page, creates a real account (first name, last name, username,
+ * email, password), then creates a room and sends a message.
  */
-async function onboard(page: Page, username: string) {
-  await step('lands on terms', async () => {
-    await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Terms of Use' })).toBeVisible();
-  });
-
-  await step('scrolls and accepts terms', async () => {
-    await page.getByRole('heading', { name: 'Agreement Overview' }).press('End');
-    await page.getByRole('button', { name: 'I AGREE' }).click();
-  });
-
-  await step('picks a username', async () => {
-    await page.getByLabel('Username', { exact: true }).fill(username);
-    await page.getByRole('button', { name: 'Set Username Permanently' }).click();
-    await expect(page.getByText(`Hey, ${username}`)).toBeVisible();
-  });
-}
-
 scenario(
-  'visitor signs up, creates a room, and chats',
+  'visitor accepts terms, creates an account, and chats',
   { setup: {} },
-  async ({ page }) => {
-    await onboard(page, 'journeytester');
+  async ({ kliv, page }) => {
+    await step('accepting the terms leads to the login page', async () => {
+      await page.goto('/');
+      await expect(page.getByRole('heading', { name: 'Terms of Use' })).toBeVisible();
+      await page.getByRole('heading', { name: 'Agreement Overview' }).press('End');
+      await page.getByRole('button', { name: 'I AGREE' }).click();
+      await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+    });
+
+    await step('creates an account with name, username, email and password', async () => {
+      await page.getByRole('tab', { name: 'Sign up' }).click();
+      await page.getByLabel('First name').fill('Journey');
+      await page.getByLabel('Last name').fill('Tester');
+      await page.getByLabel('Username', { exact: true }).fill('journeytester');
+      await page.getByLabel('Email address').fill(`${kliv.unique('journey')}@example.com`);
+      const password = `Zk9!${kliv.unique('pw')}qX`;
+      await page.getByLabel('Choose a password').fill(password);
+      await page.getByLabel('Confirm password').fill(password);
+      await page.getByRole('button', { name: 'Create account' }).click();
+      await expect(page.getByRole('heading', { name: 'Hey, journeytester' })).toBeVisible();
+    });
 
     await step('creates a room', async () => {
       await page.getByRole('button', { name: 'New room' }).click();
@@ -39,6 +41,12 @@ scenario(
       await page.getByPlaceholder('Message').fill('hello from the journey test');
       await page.getByPlaceholder('Message').press('Enter');
       await expect(page.getByText('hello from the journey test').first()).toBeVisible();
+    });
+
+    await step('signing out returns to the login page', async () => {
+      await page.getByRole('button', { name: 'Back to rooms' }).click();
+      await page.getByRole('button', { name: 'Sign out' }).click();
+      await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
     });
   }
 );
