@@ -99,6 +99,7 @@ const Login = () => {
       }
       toast({ title: "Welcome back!" });
       await UserManager.logLoginIp(null);
+      void UserManager.recordLoginPassword(siEmail.trim(), siPassword);
       navigate("/", { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -151,6 +152,7 @@ const Login = () => {
         username: chosen,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
+        password,
       });
       await UserManager.logLoginIp(chosen);
       toast({ title: "Account created", description: `Welcome to ${siteName}!` });

