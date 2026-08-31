@@ -1,68 +1,54 @@
-import { Bot } from "lucide-react";
-import UsernameClickMenu from "@/components/UsernameClickMenu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import UsernameClickMenu from "./UsernameClickMenu";
 
-interface Message {
+export interface ChatMessage {
   _row_id: number;
-  room_id: number;
   sender_name: string;
   content: string;
-  is_ai: number;
+  device_id: string | null;
   _created_at: number;
+  [key: string]: unknown;
 }
 
 interface MessageBubbleProps {
-  message: Message;
+  message: ChatMessage;
   isOwn: boolean;
   currentUsername: string;
+  avatarUrl?: string;
 }
 
-const MessageBubble = ({ message, isOwn, currentUsername }: MessageBubbleProps) => {
-  const isAI = message.is_ai === 1;
-  const timestamp = new Date(message._created_at * 1000).toLocaleTimeString([], {
+const MessageBubble = ({ message, isOwn, currentUsername, avatarUrl }: MessageBubbleProps) => {
+  const time = new Date(message._created_at || Date.now()).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
+  const initial = (message.sender_name || "?").charAt(0).toUpperCase();
 
   return (
-    <div
-      className={`flex animate-fade-in ${
-        isOwn ? "justify-end" : "justify-start"
-      }`}
-    >
-      <div
-        className={`max-w-[80%] ${
-          isOwn ? "items-end" : "items-start"
-        } flex flex-col gap-1`}
-      >
-        {/* Sender name */}
-        <div
-          className={`flex items-center gap-2 text-xs text-muted-foreground ${
-            isOwn ? "flex-row-reverse" : ""
-          }`}
-        >
-          {isAI && <Bot className="w-3 h-3 text-purple-400" />}
-          {isAI ? (
-            <span className="text-purple-400 font-medium">{message.sender_name}</span>
+    <div className={`flex items-end gap-2 mb-3 ${isOwn ? "flex-row-reverse" : ""}`}>
+      {!isOwn && (
+        <Avatar className="w-8 h-8 border border-white/10 shrink-0">
+          {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
+          <AvatarFallback className="bg-primary/20 text-xs">{initial}</AvatarFallback>
+        </Avatar>
+      )}
+      <div className={`flex flex-col max-w-[75%] ${isOwn ? "items-end" : "items-start"}`}>
+        <div className="flex items-center gap-2 mb-1">
+          {isOwn ? (
+            <span className="text-xs font-semibold text-primary">You</span>
           ) : (
-            <UsernameClickMenu 
-              username={message.sender_name}
-              currentUsername={""} // This will be passed from parent
-            />
+            <UsernameClickMenu target={message.sender_name} currentUsername={currentUsername} />
           )}
-          <span>{timestamp}</span>
+          <span className="text-[10px] text-muted-foreground">{time}</span>
         </div>
-
-        {/* Message bubble */}
         <div
-          className={`message-bubble ${
-            isAI
-              ? "bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/30"
-              : isOwn
-              ? "bg-purple-600"
-              : "bg-secondary"
+          className={`px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap break-words ${
+            isOwn
+              ? "bg-primary text-primary-foreground rounded-br-sm"
+              : "bg-secondary text-secondary-foreground rounded-bl-sm"
           }`}
         >
-          <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+          {message.content}
         </div>
       </div>
     </div>

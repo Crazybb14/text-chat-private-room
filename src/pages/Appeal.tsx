@@ -28,7 +28,7 @@ const Appeal = () => {
         const bans = await db.query("bans", { device_id: `eq.${deviceId}` });
         if (bans.length > 0) {
           setIsBanned(true);
-          setBannedUsername(bans[0].username || "");
+          setBannedUsername(String(bans[0].username || ""));
         }
         
         // Check if already appealed

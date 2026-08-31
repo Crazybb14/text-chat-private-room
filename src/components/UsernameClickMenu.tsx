@@ -1,86 +1,210 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { UserPlus, UserMinus, Shield, MessageSquare, User } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import EnhancedFriendRequest from "@/components/EnhancedFriendRequest";
+import db from "@/lib/shared/kliv-database.js";
+import { getDeviceId } from "@/lib/deviceId";
+import {
+  acceptFriendRequest,
+  getRelationship,
+  removeFriend,
+  sendFriendRequest,
+  type Relationship,
+} from "@/lib/friends";
+import { Check, Flag, MessageSquare, UserMinus, UserPlus } from "lucide-react";
 
 interface UsernameClickMenuProps {
-  username: string;
+  target: string;
   currentUsername: string;
 }
 
-const UsernameClickMenu = ({ username, currentUsername }: UsernameClickMenuProps) => {
-  const { toast } = useToast();
-  const [showMenu, setShowMenu] = useState(false);
+const REPORT_REASONS = [
+  "Spam",
+  "Harassment or bullying",
+  "Inappropriate content",
+  "Impersonation",
+  "Other",
+];
 
-  if (username === currentUsername) {
-    return <span className="font-medium">{username}</span>;
-  }
+const UsernameClickMenu = ({ target, currentUsername }: UsernameClickMenuProps) => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [relationship, setRelationship] = useState<Relationship>("none");
+  const [busy, setBusy] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState(REPORT_REASONS[0]);
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportSending, setReportSending] = useState(false);
+
+  const loadRelationship = async () => {
+    try {
+      const rel = await getRelationship(currentUsername, target);
+      setRelationship(rel);
+    } catch {
+      setRelationship("none");
+    }
+  };
+
+  const handleAddFriend = async () => {
+    setBusy(true);
+    const result = await sendFriendRequest(currentUsername, target);
+    toast({
+      title: result.ok ? "Request sent" : "Couldn't send request",
+      description: result.message,
+      variant: result.ok ? undefined : "destructive",
+    });
+    await loadRelationship();
+    setBusy(false);
+  };
+
+  const handleAccept = async () => {
+    setBusy(true);
+    try {
+      const pending = await db.query<{ _row_id: number; requested_by: string; friend_id: string }>(
+        "friendships",
+        { friend_id: `eq.${currentUsername}`, status: "eq.pending" }
+      );
+      const row = pending.find((r) => r.requested_by === target);
+      if (row) {
+        await acceptFriendRequest(row._row_id);
+        toast({ title: "Friend added", description: `You and ${target} are now friends.` });
+      }
+    } finally {
+      await loadRelationship();
+      setBusy(false);
+    }
+  };
+
+  const handleRemoveFriend = async () => {
+    setBusy(true);
+    await removeFriend(currentUsername, target);
+    toast({ title: "Friend removed", description: `${target} was removed from your friends.` });
+    await loadRelationship();
+    setBusy(false);
+  };
+
+  const handleReport = async () => {
+    setReportSending(true);
+    try {
+      await db.insert("user_reports", {
+        reported_username: target,
+        reported_device_id: null,
+        reporter_username: currentUsername,
+        reporter_device_id: getDeviceId(),
+        room_id: null,
+        report_reason: reportReason,
+        custom_reason: reportDetails.trim() || null,
+        report_type: "user",
+        status: "pending",
+      });
+      toast({ title: "Report submitted", description: "Thank you — an admin will review it." });
+      setReportOpen(false);
+      setReportDetails("");
+    } catch {
+      toast({ title: "Couldn't submit report", variant: "destructive" });
+    } finally {
+      setReportSending(false);
+    }
+  };
 
   return (
-    <div className="relative inline-block">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="p-0 h-auto font-medium text-blue-400 hover:text-blue-300 hover:bg-transparent"
-        onClick={() => setShowMenu(!showMenu)}
-      >
-        <User className="w-3 h-3 mr-1" />
-        {username}
-      </Button>
-      
-      {showMenu && (
-        <div className="absolute top-full left-0 mt-1 bg-background border border-white/10 rounded-lg shadow-lg p-2 z-50 min-w-32">
-          <div className="space-y-1">
-            <EnhancedFriendRequest
-              currentUsername={currentUsername}
-              targetUsername={username}
-              onToggleFriend={() => setShowMenu(false)}
-            />
-            
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => {
-                toast({
-                  title: "Direct Message",
-                  description: "Direct messaging coming soon!"
-                });
-                setShowMenu(false);
-              }}
-            >
-              <MessageSquare className="w-3 h-3 mr-2" />
-              Message
-            </Button>
-            
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => {
-                toast({
-                  title: "View Profile",
-                  description: "User profiles coming soon!"
-                });
-                setShowMenu(false);
-              }}
-            >
-              <User className="w-3 h-3 mr-2" />
-              Profile
-            </Button>
+    <>
+      <DropdownMenu onOpenChange={(open) => open && loadRelationship()}>
+        <DropdownMenuTrigger asChild>
+          <button className="text-xs font-semibold text-primary hover:underline text-left">
+            {target}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-48">
+          <DropdownMenuItem onClick={() => navigate(`/profile/${target}`)}>
+            View profile
+          </DropdownMenuItem>
+          {relationship === "none" && (
+            <DropdownMenuItem onClick={handleAddFriend} disabled={busy}>
+              <UserPlus className="w-4 h-4 mr-2" /> Add friend
+            </DropdownMenuItem>
+          )}
+          {relationship === "outgoing" && (
+            <DropdownMenuItem disabled>
+              <UserPlus className="w-4 h-4 mr-2" /> Request pending
+            </DropdownMenuItem>
+          )}
+          {relationship === "incoming" && (
+            <DropdownMenuItem onClick={handleAccept} disabled={busy}>
+              <Check className="w-4 h-4 mr-2" /> Accept friend request
+            </DropdownMenuItem>
+          )}
+          {relationship === "friends" && (
+            <>
+              <DropdownMenuItem onClick={() => navigate(`/dm/${target}`)}>
+                <MessageSquare className="w-4 h-4 mr-2" /> Message
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleRemoveFriend} disabled={busy}>
+                <UserMinus className="w-4 h-4 mr-2" /> Remove friend
+              </DropdownMenuItem>
+            </>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setReportOpen(true)} className="text-destructive">
+            <Flag className="w-4 h-4 mr-2" /> Report user
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Report {target}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="report-reason">Reason</Label>
+              <div className="grid grid-cols-1 gap-2">
+                {REPORT_REASONS.map((reason) => (
+                  <Button
+                    key={reason}
+                    type="button"
+                    variant={reportReason === reason ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setReportReason(reason)}
+                  >
+                    {reason}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="report-details">Details (optional)</Label>
+              <Textarea
+                id="report-details"
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                placeholder="What happened?"
+                rows={3}
+              />
+            </div>
           </div>
-        </div>
-      )}
-      
-      {/* Close menu when clicking outside */}
-      {showMenu && (
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={() => setShowMenu(false)}
-        />
-      )}
-    </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleReport} disabled={reportSending}>
+              {reportSending ? "Submitting..." : "Submit report"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

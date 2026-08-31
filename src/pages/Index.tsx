@@ -1,824 +1,453 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MessageSquare, Users, Lock, Plus, ArrowRight, Shield, Lightbulb, Scale, Settings } from "lucide-react";
+import {
+  Ban as BanIcon,
+  Lightbulb,
+  Loader2,
+  Lock,
+  MessageSquare,
+  Plus,
+  Settings as SettingsIcon,
+  Shield,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import db from "@/lib/shared/kliv-database.js";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-
-import PushNotificationManager from "@/lib/pushNotifications";
-import RealTimePushNotifications from "@/lib/realTimePushNotifications";
-import RealTimeNotifications from "@/lib/realTimeNotifications";
-import UserManager from "@/lib/userManagement";
+import db from "@/lib/shared/kliv-database.js";
 import { getDeviceId } from "@/lib/deviceId";
+import UserManager from "@/lib/userManagement";
 import UsernameSetup from "@/components/UsernameSetup";
-import AdminAccessDialog from "@/components/NewAdminAccessDialog";
-import PrivateRoomAutoCleanup from "@/components/PrivateRoomAutoCleanup";
-import IPLoginTracker from "@/components/IPLoginTracker";
-import UserSettingsDialog from "@/components/UserSettingsDialog";
+import NotificationBell from "@/components/NotificationBell";
+import FriendsDialog from "@/components/FriendsDialog";
 
-export default function Index() {
-  const { toast } = useToast();
+interface RoomRow {
+  _row_id: number;
+  name: string;
+  code: string | null;
+  type: string;
+  [key: string]: unknown;
+}
+
+interface DowntimeInfo {
+  start: number;
+  end: number;
+  reason: string | null;
+}
+
+type Phase = "loading" | "banned" | "downtime" | "setup" | "ready";
+
+const generateRoomCode = () => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+  return code;
+};
+
+const formatTime = (value: number) =>
+  new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+const Index = () => {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
+  const { toast } = useToast();
+  const [phase, setPhase] = useState<Phase>("loading");
+  const [username, setUsername] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [joinCode, setJoinCode] = useState("");
-  const [roomName, setRoomName] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
-  const [isJoining, setIsJoining] = useState(false);
-  const [isBanned, setIsBanned] = useState(false);
-  const [usernameSet, setUsernameSet] = useState(false);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [joinDialogOpen, setJoinDialogOpen] = useState(false);
-  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
-  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newRoomName, setNewRoomName] = useState("");
+  const [newRoomType, setNewRoomType] = useState("public");
+  const [creating, setCreating] = useState(false);
+  const [friendsOpen, setFriendsOpen] = useState(false);
+  const [downtime, setDowntime] = useState<DowntimeInfo | null>(null);
+  const [now, setNow] = useState(Date.now());
 
-  const generateCode = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  };
-
-  // Crash screen state
-  const [isCrashed, setIsCrashed] = useState(false);
-  const [crashCountdown, setCrashCountdown] = useState(1);
-  
-  // Downtime state
-  const [isDowntime, setIsDowntime] = useState(false);
-  const [downtimeMessage, setDowntimeMessage] = useState("");
-  const [downtimeEnd, setDowntimeEnd] = useState(0);
-
-  // Initialize desktop notifications and check ban status
-  useEffect(() => {
-    const initializeApp = async () => {
-      const deviceId = getDeviceId();
-      console.log("Device ID:", deviceId);
-      
-      // Listen for admin crash command
-      if ('BroadcastChannel' in window) {
-        const channel = new BroadcastChannel('admin_commands');
-        channel.onmessage = (event) => {
-          if (event.data.type === 'CRASH_ALL') {
-            console.log('💥 CRASH COMMAND RECEIVED');
-            setIsCrashed(true);
-            setCrashCountdown(Math.ceil(event.data.duration / 1000));
-            
-            // Start countdown
-            const countdownInterval = setInterval(() => {
-              setCrashCountdown(prev => {
-                if (prev <= 1) {
-                  clearInterval(countdownInterval);
-                  setIsCrashed(false);
-                  return 0;
-                }
-                return prev - 1;
-              });
-            }, 1000);
-          }
-        };
-      }
-      
-      // Check for crash command in localStorage (backup method)
-      const checkCrashCommand = () => {
-        const crashCmd = localStorage.getItem('admin_crash_command');
-        if (crashCmd) {
-          try {
-            const cmd = JSON.parse(crashCmd);
-            if (cmd.active && Date.now() - cmd.timestamp < cmd.duration) {
-              const remaining = Math.ceil((cmd.duration - (Date.now() - cmd.timestamp)) / 1000);
-              setIsCrashed(true);
-              setCrashCountdown(remaining);
-              
-              setTimeout(() => {
-                setIsCrashed(false);
-                localStorage.removeItem('admin_crash_command');
-              }, remaining * 1000);
-            } else {
-              localStorage.removeItem('admin_crash_command');
-            }
-          } catch {
-            localStorage.removeItem('admin_crash_command');
-          }
-        }
-      };
-      checkCrashCommand();
-      
-      try {
-        // Request desktop notification permission and enable
-        if ('Notification' in window) {
-          if (Notification.permission === 'default') {
-            const permission = await Notification.requestPermission();
-            console.log('Notification permission:', permission);
-          }
-          
-          // Always enable desktop notifications with fallback
-          console.log('Desktop notifications enabled');
-          
-          // Show welcome notification on first visit
-          if (Notification.permission === 'granted') {
-            new Notification('Welcome to ChatRooms!', {
-              body: 'Desktop notifications are enabled. You\'ll receive alerts for bans and messages.',
-              icon: '/favicon.ico',
-              tag: 'welcome'
-            });
-          }
-        } else {
-          console.log('This browser does not support desktop notifications');
-        }
-        
-        // Initialize real-time push notifications
-        await RealTimePushNotifications.initializeRealTimeNotifications();
-        
-        // Initialize real-time notifications for admin announcements
-        await RealTimeNotifications.initialize();
-        
-        // Add notification listener for announcements
-        RealTimeNotifications.addNotificationListener((announcement) => {
-          toast({
-            title: announcement.title,
-            description: announcement.message,
-            variant: announcement.type === 'warning' || announcement.type === 'security' ? 'destructive' : 'default',
-          });
+  const checkDowntime = useCallback(async (): Promise<boolean> => {
+    try {
+      const rows = await db.query("downtime_schedules", {
+        is_active: "eq.1",
+        order: "start_time.desc",
+      });
+      const current = Date.now();
+      const active = rows.find((r) => {
+        const start = Number(r.start_time);
+        const end = Number(r.end_time);
+        return current >= start && current < end;
+      });
+      if (active) {
+        setDowntime({
+          start: Number(active.start_time),
+          end: Number(active.end_time),
+          reason: (active.reason as string | null) ?? null,
         });
-        
-        // Check for existing ban that might have expired
-        const deviceBans = await db.query("bans", { device_id: `eq.${deviceId}` });
-        
-        // Check if any active bans exist
-        const now = Date.now();
-        const activeBans = deviceBans.filter(ban => {
-          return ban.expires_at === null || ban.expires_at > now;
-        });
-        
-        if (activeBans.length > 0) {
-          setIsBanned(true);
-          const ban = activeBans[0];
-          const durationText = ban.ban_duration === 0 ? "permanently" : `${Math.ceil((ban.expires_at - Date.now()) / 3600000)} hours`;
-          
-          // Send desktop notification about ban
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('⛔ Access Denied', {
-              body: `You have been banned ${durationText}: ${ban.ban_reason || "This device has been banned from using the chat"}`,
-              icon: '/favicon.ico',
-              tag: 'ban',
-              requireInteraction: true
-            });
-          }
-          
-          // Send in-app notification
-          await RealTimePushNotifications.sendBanNotification(deviceId, {
-            username: ban.username,
-            reason: ban.ban_reason || "Ban in effect",
-            duration: ban.ban_duration || 0,
-            message: ban.message_content
-          });
-          
-          toast({
-            title: "You are banned",
-            description: `${ban.ban_reason || "This device has been banned from using the chat"} (${durationText})`,
-            variant: "destructive",
-          });
-        }
-      } catch (error) {
-        console.log("Error initializing app:", error);
+        return true;
       }
-    };
-    
-    initializeApp();
-  }, [toast]);
-
-  // Check for scheduled downtime - supports recurring schedules
-  useEffect(() => {
-    const checkDowntime = async () => {
-      try {
-        const schedules = await db.query("downtime_schedules", { is_active: "eq.true" });
-        const now = Date.now();
-        
-        for (const schedule of schedules) {
-          let shouldTriggerDowntime = false;
-          let startTime = schedule.start_time;
-          let endTime = schedule.end_time;
-          
-          // Handle recurring schedules
-          if (schedule.schedule_type === "daily") {
-            const scheduledDate = new Date(startTime);
-            const recurrenceEnd = schedule.recurrence_end;
-            
-            // Check all days until recurrence end
-            for (let d = new Date(scheduledDate); d.getTime() <= recurrenceEnd; d.setDate(d.getDate() + 1)) {
-              const dayStart = new Date(d);
-              dayStart.setHours(scheduledDate.getHours(), scheduledDate.getMinutes(), 0, 0);
-              const dayEnd = new Date(dayStart.getTime() + (endTime - startTime));
-              
-              if (dayStart.getTime() <= now && dayEnd.getTime() > now) {
-                shouldTriggerDowntime = true;
-                startTime = dayStart.getTime();
-                endTime = dayEnd.getTime();
-                break;
-              }
-            }
-          } else if (schedule.schedule_type === "weekly") {
-            const scheduledDate = new Date(startTime);
-            const recurrenceEnd = schedule.recurrence_end || now + (365 * 24 * 60 * 60 * 1000); // Default to 1 year
-            const selectedDays = schedule.recurrence_days ? schedule.recurrence_days.split(",") : [];
-            
-            // Check each occurrence until recurrence end
-            for (let weekStart = new Date(scheduledDate); weekStart.getTime() <= recurrenceEnd; weekStart.setDate(weekStart.getDate() + 7)) {
-              for (const dayStr of selectedDays) {
-                const dayIndex = parseInt(dayStr);
-                const currentDate = new Date(weekStart);
-                currentDate.setDate(currentDate.getDate() + dayIndex - weekStart.getDay());
-                
-                const dayStart = new Date(currentDate);
-                dayStart.setHours(scheduledDate.getHours(), scheduledDate.getMinutes(), 0, 0);
-                const dayEnd = new Date(dayStart.getTime() + (endTime - startTime));
-                
-                if (dayStart.getTime() <= now && dayEnd.getTime() > now) {
-                  shouldTriggerDowntime = true;
-                  startTime = dayStart.getTime();
-                  endTime = dayEnd.getTime();
-                  break;
-                }
-              }
-              if (shouldTriggerDowntime) break;
-            }
-          } else if (schedule.schedule_type === "one-time") {
-            // Original logic for one-time schedules
-            if (startTime <= now && endTime > now) {
-              shouldTriggerDowntime = true;
-            }
-          }
-          
-          if (shouldTriggerDowntime) {
-            setIsDowntime(true);
-            setDowntimeMessage(schedule.message || "System is under maintenance");
-            setDowntimeEnd(endTime);
-            return;
-          }
-        }
-        setIsDowntime(false);
-      } catch (error) {
-        console.log("Error checking downtime:", error);
-      }
-    };
-    
-    checkDowntime();
-    const interval = setInterval(checkDowntime, 10000); // Check every 10 seconds
-    return () => clearInterval(interval);
+      setDowntime(null);
+      return false;
+    } catch {
+      return false;
+    }
   }, []);
 
-  // Check for existing username and terms acceptance
+  const loadRooms = useCallback(async () => {
+    try {
+      const rows = await db.query<RoomRow>("rooms", { order: "_row_id.asc" });
+      setRooms(rows);
+    } catch (error) {
+      console.error("Failed to load rooms:", error);
+    }
+  }, []);
+
   useEffect(() => {
-    const checkSetup = async () => {
+    const init = async () => {
+      if (!localStorage.getItem("terms_accepted")) {
+        navigate("/terms");
+        return;
+      }
       try {
-        // Check if terms have been accepted
-        const termsAccepted = localStorage.getItem('terms_accepted');
-        if (!termsAccepted) {
-          console.log("Terms not accepted, redirecting to terms");
-          navigate('/terms');
+        const deviceId = getDeviceId();
+        const bans = await db.query("bans", { device_id: `eq.${deviceId}` });
+        if (bans.length > 0) {
+          setPhase("banned");
           return;
         }
-        
-        // Check for existing username
-        const existingUsername = await UserManager.getUsername();
-        if (existingUsername) {
-          console.log("Found existing username:", existingUsername);
-          setUsername(existingUsername);
-          setUsernameSet(true);
+        const isDown = await checkDowntime();
+        if (isDown) {
+          setPhase("downtime");
+          return;
         }
+        const user = await UserManager.getUsername();
+        if (!user) {
+          setPhase("setup");
+          return;
+        }
+        setUsername(user);
+        setPhase("ready");
+        loadRooms();
       } catch (error) {
-        console.log("Error checking setup:", error);
+        console.error("Init failed:", error);
+        setPhase("setup");
       }
     };
-    
-    checkSetup();
-  }, [navigate]);
+    init();
+  }, [navigate, checkDowntime, loadRooms]);
 
-  // Downtime screen
-  if (isDowntime) {
-    const timeRemaining = Math.ceil((downtimeEnd - Date.now()) / 60000); // minutes
-    const duration = downtimeEnd - (downtimeEnd - (downtimeEnd - Date.now()));
-    const startTime = new Date(downtimeEnd - duration);
-    const endTime = new Date(downtimeEnd);
-    
+  // Poll for downtime while the site is usable
+  useEffect(() => {
+    if (phase !== "ready") return;
+    const interval = setInterval(async () => {
+      const isDown = await checkDowntime();
+      if (isDown) setPhase("downtime");
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [phase, checkDowntime]);
+
+  // Countdown ticker while downtime screen is up
+  useEffect(() => {
+    if (phase !== "downtime") return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [phase]);
+
+  const handleJoinByCode = async () => {
+    const code = joinCode.trim().toUpperCase();
+    if (!code) return;
+    setJoining(true);
+    try {
+      const rows = await db.query<RoomRow>("rooms", { code: `eq.${code}` });
+      if (rows.length === 0) {
+        toast({ title: "Room not found", description: "No room exists with that code.", variant: "destructive" });
+      } else {
+        sessionStorage.setItem(`room_unlocked_${rows[0]._row_id}`, "1");
+        navigate(`/chat/${rows[0]._row_id}`);
+      }
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const handleCreateRoom = async () => {
+    const name = newRoomName.trim();
+    if (!name) return;
+    setCreating(true);
+    try {
+      const type = newRoomType === "private" ? "private" : "public";
+      const code = type === "private" ? generateRoomCode() : null;
+      const created = await db.insertOne<RoomRow>("rooms", { name, code, type });
+      toast({
+        title: "Room created",
+        description: type === "private" ? `Share this code to let people in: ${code}` : undefined,
+      });
+      setCreateOpen(false);
+      setNewRoomName("");
+      setNewRoomType("public");
+      if (type === "private") {
+        sessionStorage.setItem(`room_unlocked_${created._row_id}`, "1");
+      }
+      await loadRooms();
+      navigate(`/chat/${created._row_id}`);
+    } catch {
+      toast({ title: "Couldn't create room", variant: "destructive" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (phase === "loading") {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4 overflow-hidden">
-        <style>{`
-          body {
-            overflow: hidden;
-          }
-          .no-interact {
-            pointer-events: none;
-          }
-        `}</style>
-        <div className="no-interact absolute inset-0 z-50" />
-        <div className="text-center max-w-4xl z-40">
-          <div className="mb-12">
-            <h1 className="text-6xl font-bold text-white mb-6 animate-pulse">
-              DOWNTIME HAS BEEN ENABLED
-            </h1>
-            <div className="text-2xl text-gray-300">
-              From: <span className="text-white font-semibold">{startTime.toLocaleString()}</span>
-              <br />
-              To: <span className="text-white font-semibold">{endTime.toLocaleString()}</span>
-            </div>
-          </div>
-          
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-8 mb-8">
-            <div className="text-gray-400 mb-4">
-              {downtimeMessage}
-            </div>
-            <div className="bg-red-900/30 border border-red-800 rounded-lg p-6">
-              <p className="text-4xl font-bold text-red-400 mb-2">
-                {timeRemaining > 0 ? `${timeRemaining} minutes` : "Almost done!"}
-              </p>
-              <p className="text-sm text-gray-400">Estimated time remaining</p>
-            </div>
-            <p className="text-gray-400 mt-6">
-              We're working hard to improve your experience. Thank you for your patience!
-            </p>
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (phase === "banned") {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
+        <div className="max-w-md text-center space-y-6">
+          <BanIcon className="w-16 h-16 text-red-500 mx-auto" />
+          <h1 className="text-3xl font-bold">You're banned</h1>
+          <p className="text-white/70">
+            This device has been banned from ChatRooms. If you believe this is a mistake, you can
+            submit an appeal.
+          </p>
+          <Button variant="destructive" onClick={() => navigate("/appeal")}>
+            Submit an appeal
+          </Button>
         </div>
       </div>
     );
   }
 
-  // Crash screen
-  if (isCrashed) {
+  if (phase === "downtime" && downtime) {
+    const remaining = Math.max(0, downtime.end - now);
+    const hours = Math.floor(remaining / 3600000);
+    const minutes = Math.floor((remaining % 3600000) / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-red-900/50 via-black to-red-900/50 animate-pulse" />
-        <div className="absolute inset-0">
-          {/* Glitch effect lines */}
-          {Array.from({ length: 20 }).map((_, i) => (
-            <div
-              key={i}
-              className="absolute h-1 bg-red-500/30"
-              style={{
-                top: `${Math.random() * 100}%`,
-                left: 0,
-                right: 0,
-                animation: `glitch ${0.1 + Math.random() * 0.3}s infinite`,
-                animationDelay: `${Math.random() * 0.5}s`
-              }}
-            />
-          ))}
-        </div>
-        <div className="relative z-10 text-center">
-          <div className="text-8xl mb-8 animate-bounce">💥</div>
-          <h1 className="text-6xl font-bold text-red-500 mb-4 animate-pulse" style={{ textShadow: '0 0 20px rgba(239, 68, 68, 0.8)' }}>
-            SYSTEM CRASH
+      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
+        <div className="max-w-lg text-center space-y-6">
+          <h1 className="text-4xl font-black tracking-widest text-red-500">
+            DOWNTIME HAS BEEN ENABLED
           </h1>
-          <p className="text-2xl text-red-400 mb-8">Connection interrupted by administrator</p>
-          <div className="text-9xl font-mono font-bold text-white mb-4" style={{ textShadow: '0 0 30px rgba(255, 255, 255, 0.5)' }}>
-            {crashCountdown}
+          {downtime.reason && <p className="text-white/80 text-lg">{downtime.reason}</p>}
+          <div className="text-white/70 space-y-1">
+            <p>From: {formatTime(downtime.start)}</p>
+            <p>To: {formatTime(downtime.end)}</p>
           </div>
-          <p className="text-xl text-gray-400">Reconnecting in {crashCountdown} seconds...</p>
-          <div className="mt-8 w-64 h-2 bg-gray-800 rounded-full mx-auto overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-red-500 to-orange-500 transition-all duration-1000"
-              style={{ width: `${(1 - crashCountdown) * 100}%` }}
-            />
+          <div className="font-mono text-5xl font-bold tabular-nums">
+            {String(hours).padStart(2, "0")}:{String(minutes).padStart(2, "0")}:
+            {String(seconds).padStart(2, "0")}
           </div>
+          <p className="text-white/50 text-sm">
+            The site will come back automatically when downtime ends. This page will update on its
+            own.
+          </p>
         </div>
-        <style>{`
-          @keyframes glitch {
-            0%, 100% { transform: translateX(0); opacity: 0.3; }
-            50% { transform: translateX(${Math.random() > 0.5 ? '' : '-'}${10 + Math.random() * 20}px); opacity: 0.7; }
-          }
-        `}</style>
       </div>
     );
   }
 
-  if (isBanned) {
+  if (phase === "setup") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-900 via-gray-900 to-black flex items-center justify-center p-4">
-        <Card className="w-full max-w-md glass-morphism border-white/10">
-          <CardHeader className="text-center">
-            <CardTitle className="text-3xl font-bold text-red-400">Access Denied</CardTitle>
-            <CardDescription className="text-red-300">This device has been banned from using the chat.</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!usernameSet) {
-    return (
-      <UsernameSetup 
-        onUsernameSet={(username) => {
-          console.log("Username setup completed:", username);
-          setUsername(username);
-          setUsernameSet(true);
+      <UsernameSetup
+        onUsernameSet={(user) => {
+          setUsername(user);
+          setPhase("ready");
+          loadRooms();
         }}
       />
     );
   }
 
-  const handleJoinPublic = async () => {
-    if (isBanned) {
-      toast({
-        title: "You are banned",
-        description: "You cannot join any chat rooms",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (!username.trim()) {
-      toast({
-        title: "Username required",
-        description: "Please enter a username to join the chat",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Find or create public room
-    try {
-      const publicRooms = await db.query("rooms", { type: "eq.public" });
-      let roomId;
-      
-      if (publicRooms.length === 0) {
-        // Create public room if it doesn't exist
-        const result = await db.insert("rooms", {
-          name: "Public Room",
-          type: "public",
-          code: null,
-        });
-        roomId = result._row_id;
-      } else {
-        roomId = publicRooms[0]._row_id;
-      }
-      
-      navigate(`/chat/${roomId}`);
-    } catch (error) {
-      console.log("Error accessing public room:", error);
-      toast({
-        title: "Error",
-        description: "Failed to access public room",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleCreatePrivate = async () => {
-    if (isBanned) {
-      toast({
-        title: "You are banned",
-        description: "You cannot create chat rooms",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (!username.trim() || !roomName.trim()) {
-      toast({
-        title: "Missing info",
-        description: "Please enter both username and room name",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      const code = generateCode();
-      const result = await db.insert("rooms", {
-        name: roomName,
-        code: code,
-        type: "private",
-      });
-      
-      toast({
-        title: "Room created!",
-        description: `Share this code: ${code}`,
-      });
-      
-      setCreateDialogOpen(false);
-      navigate(`/chat/${result._row_id}`);
-    } catch (error) {
-      console.log("Error creating room:", error);
-      toast({
-        title: "Error",
-        description: "Failed to create room",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const handleJoinPrivate = async () => {
-    if (isBanned) {
-      toast({
-        title: "You are banned",
-        description: "You cannot join any chat rooms",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (!username.trim() || !joinCode.trim()) {
-      toast({
-        title: "Missing info",
-        description: "Please enter both username and room code",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsJoining(true);
-    try {
-      const rooms = await db.query("rooms", { code: `eq.${joinCode}` });
-      
-      if (rooms.length === 0) {
-        toast({
-          title: "Room not found",
-          description: "Invalid room code. Please check and try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setJoinDialogOpen(false);
-      navigate(`/chat/${rooms[0]._row_id}`);
-    } catch (error) {
-      console.log("Error joining room:", error);
-      toast({
-        title: "Error",
-        description: "Failed to join room",
-        variant: "destructive",
-      });
-    } finally {
-      setIsJoining(false);
-    }
-  };
+  const publicRooms = rooms.filter((r) => r.type !== "private");
+  const privateRooms = rooms.filter((r) => r.type === "private");
 
   return (
-    <>
-      {/* Auto-cleanup component for private rooms */}
-      <PrivateRoomAutoCleanup />
-      
-      {/* IP tracking component */}
-      <IPLoginTracker username={username} />
-      
-      <div className="min-h-screen bg-background relative overflow-hidden">
-        {/* Background gradient effects */}
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-background to-blue-900/20" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
+    <div className="min-h-screen bg-background">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-background pointer-events-none" />
 
-        <div className="relative z-10 container mx-auto px-4 py-8 min-h-screen flex flex-col">
-          {/* Header */}
-          <header className="flex justify-between items-center mb-12">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-purple-500/20 border border-purple-500/30">
-                <MessageSquare className="w-6 h-6 text-purple-400" />
-              </div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                ChatRooms
-              </h1>
+      <header className="relative z-10 border-b border-white/5">
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center">
+              <MessageSquare className="w-5 h-5 text-primary" />
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => setSettingsDialogOpen(true)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setAdminDialogOpen(true)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <Shield className="w-4 h-4 mr-2" />
-                Admin
-              </Button>
-            </div>
-          </header>
-          
-          <main className="flex-1 flex flex-col items-center justify-center">
-            <UserSettingsDialog 
-              open={settingsDialogOpen}
-              onClose={() => setSettingsDialogOpen(false)}
-              username={username}
-            />
-            
-            {/* Admin Access Dialog */}
-            <AdminAccessDialog 
-              open={adminDialogOpen}
-              onClose={() => setAdminDialogOpen(false)}
-            />
-            
-            <div className="text-center mb-12">
-              <h2 className="text-4xl md:text-5xl font-bold mb-4">
-                Chat with anyone,{" "}
-                <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                  anywhere
-                </span>
-              </h2>
-              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                Join the public room for open conversations or create a private room with a secret code for you and your friends.
-              </p>
-            </div>
-
-            {/* Username display */}
-            <div className="w-full max-w-sm mb-8 p-4 rounded-lg bg-secondary/50 border border-white/10 text-center">
-              <p className="text-sm text-muted-foreground">Your username:</p>
-              <p className="text-xl font-semibold text-purple-400">{username}</p>
-            </div>
-            
-            {/* Enhanced Room Cards with Status */}
-            <div className="grid md:grid-cols-2 gap-6 w-full max-w-4xl mx-auto">
-              {/* Public Room Card */}
-              <Card className="glass-morphism border-white/10 hover:border-green-500/30 transition-all duration-300 group transform hover:scale-105 hover:shadow-2xl hover:shadow-green-500/20">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center group-hover:rotate-12 transition-transform">
-                      <Users className="w-6 h-6 text-white" />
-                    </div>
-                    <Badge className="bg-green-500/20 text-green-300 border-green-500/30">
-                      <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
-                      Public
-                    </Badge>
-                  </div>
-                  <CardTitle className="text-xl bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
-                    Public Room
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Join the main public chat room and talk with everyone.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-3">
-                    <div className="bg-green-500/10 rounded-lg p-3 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-green-300">✓ Open Access</span>
-                        <span className="text-green-300">👥 Anyone Can Join</span>
-                      </div>
-                    </div>
-                    <Button
-                      onClick={handleJoinPublic}
-                      disabled={isBanned}
-                      className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-3 h-12 shadow-lg hover:shadow-green-500/25"
-                    >
-                      <Users className="w-4 h-4 mr-2" />
-                      Join Public Room
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Private Room Card */}
-              <Card className="glass-morphism border-white/10 hover:border-purple-500/30 transition-all duration-300 group transform hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/20">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center group-hover:rotate-12 transition-transform">
-                      <Lock className="w-6 h-6 text-white" />
-                    </div>
-                    <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30">
-                      <span className="w-2 h-2 bg-purple-400 rounded-full mr-2 animate-pulse"></span>
-                      Private
-                    </Badge>
-                  </div>
-                  <CardTitle className="text-xl bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                    Private Room
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Create a secret room with a 6-digit code for friends only.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-3">
-                    <div className="bg-purple-500/10 rounded-lg p-3 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-purple-300">🔒 Secured</span>
-                        <span className="text-purple-300">👥 Invite Only</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      {/* Create Private Room Dialog */}
-                      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-                        <DialogTrigger asChild>
-                          <Button 
-                            variant="outline" 
-                            disabled={isBanned}
-                            className="flex-1 border-purple-500/30 hover:bg-purple-500/10 hover:border-purple-400 bg-purple-500/10 text-purple-300 font-semibold py-3 h-12"
-                          >
-                            <Plus className="w-4 h-4 mr-1" />
-                            Create
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="bg-card border-white/10 shadow-2xl">
-                          <DialogHeader className="pb-4">
-                            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center mx-auto mb-4">
-                              <Lock className="w-8 h-8 text-white" />
-                            </div>
-                            <DialogTitle className="text-xl">Create Private Room</DialogTitle>
-                            <DialogDescription className="text-gray-400">
-                              Give your room a unique name. We'll generate a secret 6-digit code for sharing.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="space-y-4 pt-4">
-                            <Input
-                              placeholder="Enter room name..."
-                              value={roomName}
-                              onChange={(e) => setRoomName(e.target.value)}
-                              className="bg-secondary/50 border-white/10 text-white placeholder:text-gray-500 h-12"
-                            />
-                            <Button
-                              onClick={handleCreatePrivate}
-                              disabled={isCreating}
-                              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-3 h-12 shadow-lg"
-                            >
-                              {isCreating ? "Creating..." : "Create Private Room"}
-                            </Button>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-
-                      {/* Join Private Room Dialog */}
-                      <Dialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen}>
-                        <DialogTrigger asChild>
-                          <Button 
-                            disabled={isBanned}
-                            className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-3 h-12 shadow-lg hover:shadow-purple-500/25"
-                          >
-                            Join
-                            <ArrowRight className="w-4 h-4 ml-1" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="bg-card border-white/10 shadow-2xl">
-                          <DialogHeader className="pb-4">
-                            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center mx-auto mb-4">
-                              <Lock className="w-8 h-8 text-white" />
-                            </div>
-                            <DialogTitle className="text-xl">Join Private Room</DialogTitle>
-                            <DialogDescription className="text-gray-400">
-                              Enter the 6-digit code that was shared with you.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="space-y-4 pt-4">
-                            <div className="relative">
-                              <Input
-                                placeholder="000000"
-                                value={joinCode}
-                                onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, ''))}
-                                maxLength={6}
-                                className="bg-secondary/50 border-white/10 text-center text-3xl tracking-widest font-mono text-white placeholder:text-gray-600 h-14"
-                              />
-                              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-purple-400">
-                                <Lock className="w-5 h-5" />
-                              </div>
-                            </div>
-                            <Button
-                              onClick={handleJoinPrivate}
-                              disabled={isJoining}
-                              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-3 h-12 shadow-lg"
-                            >
-                              {isJoining ? "Joining..." : "Join Private Room"}
-                            </Button>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Links */}
-            <div className="flex justify-center gap-4 mt-8">
-              <Button
-                variant="ghost"
-                onClick={() => navigate("/suggestions")}
-                className="text-muted-foreground hover:text-yellow-400"
-              >
-                <Lightbulb className="w-4 h-4 mr-2" />
-                Suggestions
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => navigate("/appeal")}
-                className="text-muted-foreground hover:text-blue-400"
-              >
-                <Scale className="w-4 h-4 mr-2" />
-                Ban Appeal
-              </Button>
-            </div>
-
-            {/* Footer */}
-            <footer className="text-center text-muted-foreground text-sm mt-4">
-              <p>Your username is permanently linked to this device. Keep the chat friendly!</p>
-            </footer>
-          </main>
+            <span className="font-bold text-lg">ChatRooms</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <NotificationBell username={username || ""} />
+            <Button variant="ghost" size="icon" title="Friends" onClick={() => setFriendsOpen(true)}>
+              <Users className="w-5 h-5" />
+            </Button>
+            <Button variant="ghost" size="icon" title="Settings" onClick={() => navigate("/settings")}>
+              <SettingsIcon className="w-5 h-5" />
+            </Button>
+            <Button variant="ghost" size="icon" title="Admin" onClick={() => navigate("/admin")}>
+              <Shield className="w-5 h-5" />
+            </Button>
+          </div>
         </div>
-      </div>
-    </>
+      </header>
+
+      <main className="relative z-10 max-w-5xl mx-auto px-4 py-8 space-y-8">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Hey, {username}</h1>
+            <p className="text-muted-foreground text-sm">Pick a room and start chatting.</p>
+          </div>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" /> New room
+          </Button>
+        </div>
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase text-muted-foreground flex items-center gap-2">
+            <MessageSquare className="w-4 h-4" /> Public rooms
+          </h2>
+          {publicRooms.length === 0 && (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground text-sm">
+                No public rooms yet — create the first one!
+              </CardContent>
+            </Card>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {publicRooms.map((room) => (
+              <Card
+                key={room._row_id}
+                className="cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => navigate(`/chat/${room._row_id}`)}
+              >
+                <CardContent className="flex items-center gap-3 py-4">
+                  <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+                    <MessageSquare className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">{room.name}</p>
+                    <p className="text-xs text-muted-foreground">Public room</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardContent className="py-5 space-y-3">
+              <h3 className="font-semibold flex items-center gap-2 text-sm">
+                <Lock className="w-4 h-4" /> Join a private room
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {privateRooms.length > 0
+                  ? "Enter the code the room owner shared with you."
+                  : "Enter a code the room owner shared with you."}
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Room code"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === "Enter" && handleJoinByCode()}
+                  maxLength={12}
+                  className="uppercase font-mono tracking-widest"
+                />
+                <Button onClick={handleJoinByCode} disabled={joining || !joinCode.trim()}>
+                  {joining ? <Loader2 className="w-4 h-4 animate-spin" /> : "Join"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="py-5 space-y-3">
+              <h3 className="font-semibold flex items-center gap-2 text-sm">
+                <Users className="w-4 h-4" /> Your own room
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Make a public room anyone can join, or a private room that needs a code.
+              </p>
+              <Button variant="outline" onClick={() => setCreateOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" /> Create a room
+              </Button>
+            </CardContent>
+          </Card>
+        </section>
+      </main>
+
+      <footer className="relative z-10 border-t border-white/5 py-4">
+        <div className="max-w-5xl mx-auto px-4 flex items-center justify-between text-xs text-muted-foreground">
+          <span>Signed in as @{username}</span>
+          <button
+            className="flex items-center gap-1 hover:text-foreground transition-colors"
+            onClick={() => navigate("/suggestions")}
+          >
+            <Lightbulb className="w-3.5 h-3.5" /> Suggestions
+          </button>
+        </div>
+      </footer>
+
+      <FriendsDialog open={friendsOpen} onClose={() => setFriendsOpen(false)} username={username || ""} />
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create a room</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="room-name">Room name</Label>
+              <Input
+                id="room-name"
+                placeholder="e.g. Late Night Chat"
+                value={newRoomName}
+                onChange={(e) => setNewRoomName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreateRoom()}
+                maxLength={60}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Room type</Label>
+              <Select value={newRoomType} onValueChange={setNewRoomType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="public">Public — anyone can join</SelectItem>
+                  <SelectItem value="private">Private — join code required</SelectItem>
+                </SelectContent>
+              </Select>
+              {newRoomType === "private" && (
+                <p className="text-xs text-muted-foreground">
+                  A 6-character code will be generated — share it with the people you want in the
+                  room.
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateRoom} disabled={creating || !newRoomName.trim()}>
+              {creating ? "Creating..." : "Create room"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
-}
+};
+
+export default Index;
