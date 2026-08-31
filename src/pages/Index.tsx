@@ -28,6 +28,7 @@ import db from "@/lib/shared/kliv-database.js";
 import UserManager, { type SessionInfo } from "@/lib/userManagement";
 import NotificationBell from "@/components/NotificationBell";
 import FriendsDialog from "@/components/FriendsDialog";
+import PermissionPrompt from "@/components/PermissionPrompt";
 import DowntimeScreen, { getActiveDowntime, type DowntimeInfo } from "@/components/DowntimeScreen";
 import {
   settingBool,
@@ -588,6 +589,7 @@ const Index = () => {
       </footer>
 
       <FriendsDialog open={friendsOpen} onClose={() => setFriendsOpen(false)} username={username || ""} />
+      <PermissionPrompt />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>

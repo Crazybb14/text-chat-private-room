@@ -1,5 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import UsernameClickMenu from "./UsernameClickMenu";
+import { fileKind, formatBytes } from "@/lib/chatFiles";
+import { Download, File as FileIcon, FileText, Image as ImageIcon } from "lucide-react";
 
 export interface ChatMessage {
   _row_id: number;
@@ -7,6 +9,10 @@ export interface ChatMessage {
   content: string;
   device_id: string | null;
   _created_at: number;
+  file_path?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  mime_type?: string | null;
   [key: string]: unknown;
 }
 
@@ -29,6 +35,55 @@ export function usernameHue(name: string): number {
   }
   return hash;
 }
+
+/** File shared in a chat: image preview, or a named card with a download. */
+const FileAttachment = ({ message }: { message: ChatMessage }) => {
+  const path = message.file_path ?? "";
+  const name = message.file_name || "file";
+  const kind = fileKind(message.mime_type || "");
+  const size =
+    typeof message.file_size === "number" && message.file_size > 0
+      ? formatBytes(message.file_size)
+      : null;
+
+  if (kind === "image" && path) {
+    return (
+      <a href={path} target="_blank" rel="noreferrer" className="block">
+        <img
+          src={`${path}?w=480`}
+          alt={name}
+          className="rounded-xl max-w-full max-h-72 object-cover"
+          loading="lazy"
+        />
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={path}
+      download={name}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-3 min-w-[180px] py-1 pr-2 hover:opacity-80 transition-opacity"
+    >
+      <span className="w-10 h-10 rounded-xl bg-black/15 flex items-center justify-center shrink-0">
+        {kind === "video" ? (
+          <ImageIcon className="w-5 h-5" />
+        ) : kind === "audio" ? (
+          <FileIcon className="w-5 h-5" />
+        ) : (
+          <FileText className="w-5 h-5" />
+        )}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium truncate">{name}</span>
+        {size && <span className="block text-xs opacity-70">{size}</span>}
+      </span>
+      <Download className="w-4 h-4 ml-auto shrink-0" />
+    </a>
+  );
+};
 
 const MessageBubble = ({
   message,
@@ -70,13 +125,16 @@ const MessageBubble = ({
         </div>
         <div
           style={{ fontSize: `${fontSize}px`, lineHeight: 1.45 }}
-          className={`px-4 py-2.5 rounded-2xl whitespace-pre-wrap break-words shadow-sm ${
+          className={`px-4 py-2.5 rounded-2xl break-words shadow-sm ${
             isOwn
               ? "bg-primary text-primary-foreground rounded-br-md"
               : "bg-secondary text-secondary-foreground rounded-bl-md"
-          }`}
+          } ${message.file_path ? "p-2" : "whitespace-pre-wrap"}`}
         >
-          {message.content}
+          {message.file_path ? <FileAttachment message={message} /> : message.content}
+          {message.file_path && message.content ? (
+            <p className="whitespace-pre-wrap px-2 pb-1 text-sm">{message.content}</p>
+          ) : null}
         </div>
       </div>
     </div>

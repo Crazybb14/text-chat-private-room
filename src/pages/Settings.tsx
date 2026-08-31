@@ -11,8 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import UserManager from "@/lib/userManagement";
-import { getProfile, saveProfile } from "@/lib/friends";
+import { getFriends, getProfile, saveProfile } from "@/lib/friends";
 import { useUserPrefs } from "@/lib/userSettings";
+import type { AutoJoinMode } from "@/lib/autoJoin";
 
 const STATUSES = ["online", "away", "busy", "offline"];
 
@@ -55,6 +56,7 @@ const Settings = () => {
   const [status, setStatus] = useState("online");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  const [friends, setFriends] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { prefs, update } = useUserPrefs(username);
 
@@ -66,6 +68,9 @@ const Settings = () => {
         return;
       }
       setUsername(user);
+      getFriends(user)
+        .then(setFriends)
+        .catch(() => setFriends([]));
       const profile = await getProfile(user);
       if (profile) {
         setDisplayName((profile.display_name as string) || "");
@@ -289,6 +294,125 @@ const Settings = () => {
                 onCheckedChange={(v) => update({ compact: v })}
                 aria-label="Compact messages"
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Friends &amp; auto-join</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Auto-join group chats</p>
+                  <p className="text-xs text-muted-foreground">
+                    When a friend creates a group chat, you're added automatically.
+                  </p>
+                </div>
+                <Select
+                  value={prefs.auto_join_group}
+                  onValueChange={(v) => update({ auto_join_group: v as AutoJoinMode })}
+                >
+                  <SelectTrigger className="w-52">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="off">Off</SelectItem>
+                    <SelectItem value="friends">Any friend's room</SelectItem>
+                    <SelectItem value="specific">Only specific friends</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {prefs.auto_join_group === "specific" && (
+                <div className="space-y-2 pl-1">
+                  <p className="text-xs text-muted-foreground">
+                    {friends.length === 0
+                      ? "Add friends first — then pick whose rooms you join."
+                      : "Whose group chats should you join automatically?"}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {friends.map((friend) => {
+                      const on = prefs.auto_join_group_list.includes(friend);
+                      return (
+                        <button
+                          key={friend}
+                          type="button"
+                          className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                            on
+                              ? "border-primary/60 bg-primary/15 text-foreground"
+                              : "border-white/10 text-muted-foreground hover:text-foreground"
+                          }`}
+                          onClick={() =>
+                            update({
+                              auto_join_group_list: on
+                                ? prefs.auto_join_group_list.filter((f) => f !== friend)
+                                : [...prefs.auto_join_group_list, friend],
+                            })
+                          }
+                        >
+                          @{friend}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3 border-t border-white/5 pt-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Voice &amp; video call alerts</p>
+                  <p className="text-xs text-muted-foreground">
+                    Get notified the moment a friend starts a call.
+                  </p>
+                </div>
+                <Select
+                  value={prefs.auto_join_voice}
+                  onValueChange={(v) => update({ auto_join_voice: v as AutoJoinMode })}
+                >
+                  <SelectTrigger className="w-52">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="off">Off</SelectItem>
+                    <SelectItem value="friends">Any friend's call</SelectItem>
+                    <SelectItem value="specific">Only specific friends</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {prefs.auto_join_voice === "specific" && (
+                <div className="space-y-2 pl-1">
+                  <p className="text-xs text-muted-foreground">Whose calls should ping you?</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {friends.map((friend) => {
+                      const on = prefs.auto_join_voice_list.includes(friend);
+                      return (
+                        <button
+                          key={friend}
+                          type="button"
+                          className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                            on
+                              ? "border-primary/60 bg-primary/15 text-foreground"
+                              : "border-white/10 text-muted-foreground hover:text-foreground"
+                          }`}
+                          onClick={() =>
+                            update({
+                              auto_join_voice_list: on
+                                ? prefs.auto_join_voice_list.filter((f) => f !== friend)
+                                : [...prefs.auto_join_voice_list, friend],
+                            })
+                          }
+                        >
+                          @{friend}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

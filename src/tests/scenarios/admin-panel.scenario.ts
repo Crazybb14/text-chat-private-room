@@ -22,10 +22,10 @@ scenario(
       await expect(page.getByText('Sign-in required').first()).toBeVisible();
     });
 
-    await step('download tab offers the website zip', async () => {
-      await page.getByRole('tab', { name: 'Download' }).click();
-      await expect(page.getByText('Download website code')).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Download Website' })).toBeEnabled();
+    await step('download tab is reserved for the owner', async () => {
+      // The website ZIP contains the site's source, so a code-only login no
+      // longer sees it — only the signed-in owner does.
+      await expect(page.getByRole('tab', { name: 'Download' })).toHaveCount(0);
     });
   }
 );

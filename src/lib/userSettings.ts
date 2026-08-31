@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import db from "@/lib/shared/kliv-database.js";
+import { coerceAutoJoinList, coerceAutoJoinMode, type AutoJoinMode } from "./autoJoin";
+
+export type { AutoJoinMode };
 
 export interface UserPrefs {
   /** Message text size in pixels (12–20). */
@@ -14,6 +17,14 @@ export interface UserPrefs {
   enter_to_send: boolean;
   /** Timestamps next to messages. */
   timestamps: boolean;
+  /** Auto-join group chats created by friends. */
+  auto_join_group: AutoJoinMode;
+  /** Specific friends whose group chats are auto-joined. */
+  auto_join_group_list: string[];
+  /** Get alerted when friends start voice/video calls. */
+  auto_join_voice: AutoJoinMode;
+  /** Specific friends whose calls trigger the alert. */
+  auto_join_voice_list: string[];
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -23,6 +34,10 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   show_online: true,
   enter_to_send: true,
   timestamps: true,
+  auto_join_group: "off",
+  auto_join_group_list: [],
+  auto_join_voice: "off",
+  auto_join_voice_list: [],
 };
 
 interface SettingsRow {
@@ -54,6 +69,10 @@ export function coerceUserPrefs(raw: string | null | undefined): UserPrefs {
   out.show_online = parsed.show_online !== false;
   out.enter_to_send = parsed.enter_to_send !== false;
   out.timestamps = parsed.timestamps !== false;
+  out.auto_join_group = coerceAutoJoinMode(parsed.auto_join_group);
+  out.auto_join_group_list = coerceAutoJoinList(parsed.auto_join_group_list);
+  out.auto_join_voice = coerceAutoJoinMode(parsed.auto_join_voice);
+  out.auto_join_voice_list = coerceAutoJoinList(parsed.auto_join_voice_list);
   return out;
 }
 

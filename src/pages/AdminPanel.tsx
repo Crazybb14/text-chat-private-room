@@ -14,6 +14,7 @@ import {
   KeyRound,
   Lightbulb,
   Loader2,
+  Lock,
   LogIn,
   LogOut,
   MessageSquare,
@@ -73,6 +74,16 @@ import {
   type CallSessionRow,
 } from "@/lib/calls";
 import { isOwnerSession } from "@/lib/owner";
+import AdminDirectMessages from "@/components/AdminDirectMessages";
+import AdminNotifications from "@/components/AdminNotifications";
+import AdminManagers, { MakeAdminDialog } from "@/components/AdminManagers";
+import {
+  canDo,
+  clearAdminSession,
+  getAdminSession,
+  type AdminSession,
+  type PermissionKey,
+} from "@/lib/adminAccounts";
 
 interface RoomRow {
   _row_id: number;
@@ -234,6 +245,8 @@ const AdminPanel = () => {
   const [asText, setAsText] = useState("");
   const [asBusy, setAsBusy] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<string | null>(null);
+  const [adminSession, setAdminSession] = useState<AdminSession | null>(null);
+  const [makeAdminTarget, setMakeAdminTarget] = useState<string | null>(null);
 
   // Settings + cleanup
   const { settings, loaded: settingsLoaded, update: updateSetting, reload: reloadSettings } = useAppSettings();
@@ -255,6 +268,7 @@ const AdminPanel = () => {
 
   useEffect(() => {
     setAuthorized(localStorage.getItem("isAdmin") === "true");
+    setAdminSession(getAdminSession());
   }, []);
 
   useEffect(() => {
@@ -279,6 +293,11 @@ const AdminPanel = () => {
   }, [authorized]);
 
   const isOwner = isOwnerSession(session ?? null);
+
+  // What this admin may do: owners get everything, invited admins only what
+  // the owner checked for them.
+  const adminPerms = adminSession?.permissions ?? {};
+  const can = (key: PermissionKey) => canDo(adminPerms, key, isOwner);
 
   // Keep the live-calls list fresh
   useEffect(() => {
@@ -670,6 +689,7 @@ const AdminPanel = () => {
 
   const handleAdminSignOut = () => {
     localStorage.removeItem("isAdmin");
+    clearAdminSession();
     navigate("/admin");
   };
 
@@ -705,6 +725,19 @@ const AdminPanel = () => {
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
           Account details, IP addresses, password resets, and site settings are only available
           when you're signed in as the site owner's own login.
+        </p>
+      </CardContent>
+    </Card>
+  );
+
+  const NoPermission = (
+    <Card>
+      <CardContent className="py-10 text-center space-y-2">
+        <Lock className="w-8 h-8 mx-auto text-muted-foreground" />
+        <p className="font-semibold">Not part of your admin access</p>
+        <p className="text-sm text-muted-foreground max-w-md mx-auto">
+          The site owner hasn't given you permission for this area. Ask them to turn it on under
+          Admins → Abilities.
         </p>
       </CardContent>
     </Card>
@@ -794,6 +827,11 @@ const AdminPanel = () => {
                 {session.isPrimaryTeam ? "owner" : session.email ?? "signed in"}
               </Badge>
             )}
+            {!isOwner && adminSession && (
+              <Badge variant="outline" className="ml-2">
+                admin: @{adminSession.username}
+              </Badge>
+            )}
             {onlineUsernames.size > 0 && (
               <Badge variant="outline" className="ml-2 gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -816,22 +854,29 @@ const AdminPanel = () => {
         <Tabs defaultValue="overview">
           <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="rooms">Rooms</TabsTrigger>
-            <TabsTrigger value="live">Live</TabsTrigger>
-            <TabsTrigger value="calls">
-              Calls {calls.length > 0 && <Badge className="ml-1 h-4 px-1.5">{calls.length}</Badge>}
-            </TabsTrigger>
-            <TabsTrigger value="messages">Messages</TabsTrigger>
-            <TabsTrigger value="accounts">Accounts</TabsTrigger>
-            <TabsTrigger value="ips">IP Logs</TabsTrigger>
-            <TabsTrigger value="bans">Bans</TabsTrigger>
-            <TabsTrigger value="reports">
-              Reports {pendingReports > 0 && <Badge className="ml-1 h-4 px-1.5">{pendingReports}</Badge>}
-            </TabsTrigger>
-            <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
-            <TabsTrigger value="downtime">Downtime</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-            <TabsTrigger value="download">Download</TabsTrigger>
+            {can("rooms") && <TabsTrigger value="rooms">Rooms</TabsTrigger>}
+            {can("live") && <TabsTrigger value="live">Live</TabsTrigger>}
+            {can("calls") && (
+              <TabsTrigger value="calls">
+                Calls {calls.length > 0 && <Badge className="ml-1 h-4 px-1.5">{calls.length}</Badge>}
+              </TabsTrigger>
+            )}
+            {can("messages") && <TabsTrigger value="messages">Messages</TabsTrigger>}
+            {can("dms") && <TabsTrigger value="dms">Direct Messages</TabsTrigger>}
+            {can("accounts") && <TabsTrigger value="accounts">Accounts</TabsTrigger>}
+            {can("admins") && <TabsTrigger value="admins">Admins</TabsTrigger>}
+            {can("ips") && <TabsTrigger value="ips">IP Logs</TabsTrigger>}
+            {can("people") && <TabsTrigger value="bans">Bans</TabsTrigger>}
+            {can("people") && (
+              <TabsTrigger value="reports">
+                Reports {pendingReports > 0 && <Badge className="ml-1 h-4 px-1.5">{pendingReports}</Badge>}
+              </TabsTrigger>
+            )}
+            {can("people") && <TabsTrigger value="suggestions">Suggestions</TabsTrigger>}
+            {can("notifications") && <TabsTrigger value="notifications">Notifications</TabsTrigger>}
+            {can("downtime") && <TabsTrigger value="downtime">Downtime</TabsTrigger>}
+            {can("settings") && <TabsTrigger value="settings">Settings</TabsTrigger>}
+            {isOwner && <TabsTrigger value="download">Download</TabsTrigger>}
           </TabsList>
 
           {/* OVERVIEW */}
@@ -1360,6 +1405,15 @@ const AdminPanel = () => {
                               Diagnostics
                             </Button>
                           )}
+                          {isOwner && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setMakeAdminTarget(acct.username)}
+                            >
+                              <UserCog className="w-4 h-4 mr-2" /> Make admin
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
@@ -1769,8 +1823,24 @@ const AdminPanel = () => {
             )}
           </TabsContent>
 
+          {/* DIRECT MESSAGES */}
+          <TabsContent value="dms" className="space-y-4 mt-4">
+            {can("dms") ? withSignIn(<AdminDirectMessages />) : NoPermission}
+          </TabsContent>
+
+          {/* NOTIFICATIONS */}
+          <TabsContent value="notifications" className="space-y-4 mt-4">
+            {can("notifications") ? <AdminNotifications /> : NoPermission}
+          </TabsContent>
+
+          {/* ADMINS */}
+          <TabsContent value="admins" className="space-y-4 mt-4">
+            {can("admins") ? <AdminManagers ownerEmail={session?.email ?? null} /> : NoPermission}
+          </TabsContent>
+
           {/* DOWNLOAD */}
           <TabsContent value="download" className="space-y-4 mt-4">
+            {isOwner ? (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Download website code</CardTitle>
@@ -1791,6 +1861,7 @@ const AdminPanel = () => {
                 </p>
               </CardContent>
             </Card>
+            ) : NoPermission}
           </TabsContent>
         </Tabs>
       </main>
@@ -1868,6 +1939,12 @@ const AdminPanel = () => {
         </DialogContent>
       </Dialog>
 
+      <MakeAdminDialog
+        username={makeAdminTarget}
+        ownerEmail={session?.email ?? null}
+        onClose={() => setMakeAdminTarget(null)}
+        onDone={loadAll}
+      />
       <UserDiagnostics username={diagUser} onClose={() => setDiagUser(null)} />
       {watchCall && (session?.username ?? "owner") && (
         <CallStage

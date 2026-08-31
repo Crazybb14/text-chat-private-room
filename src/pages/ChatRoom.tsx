@@ -7,6 +7,7 @@ import {
   Loader2,
   Lock,
   Megaphone,
+  Paperclip,
   Send,
   Users,
   Video as VideoIcon,
@@ -50,6 +51,8 @@ import {
 import { isOwnerSession } from "@/lib/owner";
 import { useUserPrefs } from "@/lib/userSettings";
 import { playMessageChime } from "@/lib/sound";
+import { uploadRoomFile, validateChatFile } from "@/lib/chatFiles";
+import { notifyFriendsOfCall } from "@/lib/autoJoin";
 
 interface RoomRow {
   _row_id: number;
@@ -85,12 +88,14 @@ const ChatRoom = () => {
   const [isOwner, setIsOwner] = useState(false);
   const [activeCall, setActiveCall] = useState<CallSessionRow | null>(null);
   const [call, setCall] = useState<{ callId: number; label: string } | null>(null);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const messageCountRef = useRef(0);
   const typingRowRef = useRef<number | null>(null);
   const typingSentAtRef = useRef(0);
   const lastSentAtRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const maxMessageLength = Math.max(50, settingNumber(settings, "max_message_length") || 2000);
   const slowModeSeconds = settingNumber(settings, "slow_mode_seconds");
@@ -375,6 +380,28 @@ const ChatRoom = () => {
     }
   };
 
+  /** Shares a file straight into the room's message feed. */
+  const handleFilePicked = async (file: File | undefined) => {
+    if (!file || !roomId || !username) return;
+    const check = validateChatFile(file);
+    if (!check.ok) {
+      toast({ title: "Can't send that file", description: check.reason, variant: "destructive" });
+      return;
+    }
+    setUploadPct(0);
+    try {
+      await uploadRoomFile(Number(roomId), file, username, (pct) => setUploadPct(pct));
+      syncTyping("", true);
+      await loadMessages();
+      toast({ title: "File shared", description: file.name });
+    } catch {
+      toast({ title: "Upload failed", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setUploadPct(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const handleStartCall = async () => {
     if (!roomId) return;
     const type = room?.type === "private" ? "private-room" : "public-room";
@@ -382,6 +409,10 @@ const ChatRoom = () => {
       const result = await startCall({ type, roomId: Number(roomId) });
       if (result.ok && result.callId) {
         setCall({ callId: result.callId, label: `${room?.name ?? "Room"} — call` });
+        // Friends who opted into call alerts hear about it right away
+        if (username) {
+          void notifyFriendsOfCall(username, room?.name ?? "a room", Number(roomId));
+        }
       } else {
         toast({ title: "Couldn't start the call", description: result.error, variant: "destructive" });
       }
@@ -599,6 +630,28 @@ const ChatRoom = () => {
               <span>{prefs.enter_to_send ? "Enter to send" : "Send with the button"}</span>
             </div>
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => void handleFilePicked(e.target.files?.[0])}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-10 w-10 shrink-0 self-start mt-0.5"
+            aria-label="Send a file"
+            title="Send a file"
+            disabled={uploadPct !== null}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploadPct !== null ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Paperclip className="w-4 h-4" />
+            )}
+          </Button>
           <Button
             type="submit"
             className="h-10 self-start mt-0.5 px-5"
@@ -608,6 +661,17 @@ const ChatRoom = () => {
             Send
           </Button>
         </form>
+        {uploadPct !== null && (
+          <div className="max-w-4xl mx-auto px-4 pb-3">
+            <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all"
+                style={{ width: `${Math.min(100, Math.max(2, uploadPct))}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Uploading… {Math.round(uploadPct)}%</p>
+          </div>
+        )}
       </div>
 
       {call && username && (
