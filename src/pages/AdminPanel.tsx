@@ -17,12 +17,14 @@ import {
   LogIn,
   LogOut,
   MessageSquare,
+  MicOff,
   Plus,
   RefreshCw,
   Search,
   Shield,
   Trash2,
   UserCog,
+  Video as VideoIcon,
   Wifi,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -61,6 +63,16 @@ import {
   type SettingValue,
 } from "@/lib/appSettings";
 import { isPresenceOnline, parseSeen, type PresenceRow } from "@/lib/presence";
+import CallStage from "@/components/CallStage";
+import UserDiagnostics from "@/components/UserDiagnostics";
+import {
+  endCall,
+  getActiveCalls,
+  splitPairKey,
+  type CallParticipantRow,
+  type CallSessionRow,
+} from "@/lib/calls";
+import { isOwnerSession } from "@/lib/owner";
 
 interface RoomRow {
   _row_id: number;
@@ -234,6 +246,13 @@ const AdminPanel = () => {
   const [pwBusy, setPwBusy] = useState(false);
   const [pwDone, setPwDone] = useState<string | null>(null);
 
+  // Live calls + per-account diagnostics (owner tools)
+  const [calls, setCalls] = useState<CallSessionRow[]>([]);
+  const [callParts, setCallParts] = useState<CallParticipantRow[]>([]);
+  const [watchCall, setWatchCall] = useState<{ callId: number; label: string } | null>(null);
+  const [diagUser, setDiagUser] = useState<string | null>(null);
+  const [endingCallId, setEndingCallId] = useState<number | null>(null);
+
   useEffect(() => {
     setAuthorized(localStorage.getItem("isAdmin") === "true");
   }, []);
@@ -256,6 +275,34 @@ const AdminPanel = () => {
       });
     return () => {
       cancelled = true;
+    };
+  }, [authorized]);
+
+  const isOwner = isOwnerSession(session ?? null);
+
+  // Keep the live-calls list fresh
+  useEffect(() => {
+    if (authorized !== true) return;
+    let stopped = false;
+    const loadCalls = async () => {
+      try {
+        const [sessionCalls, parts] = await Promise.all([
+          getActiveCalls(),
+          db.query<CallParticipantRow>("call_participants", { order: "_row_id.desc" }),
+        ]);
+        if (!stopped) {
+          setCalls(sessionCalls);
+          setCallParts(parts);
+        }
+      } catch {
+        // best-effort
+      }
+    };
+    void loadCalls();
+    const timer = setInterval(loadCalls, 10000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
     };
   }, [authorized]);
 
@@ -771,6 +818,9 @@ const AdminPanel = () => {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="rooms">Rooms</TabsTrigger>
             <TabsTrigger value="live">Live</TabsTrigger>
+            <TabsTrigger value="calls">
+              Calls {calls.length > 0 && <Badge className="ml-1 h-4 px-1.5">{calls.length}</Badge>}
+            </TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
             <TabsTrigger value="accounts">Accounts</TabsTrigger>
             <TabsTrigger value="ips">IP Logs</TabsTrigger>
@@ -1089,6 +1139,97 @@ const AdminPanel = () => {
             )}
           </TabsContent>
 
+          {/* CALLS */}
+          <TabsContent value="calls" className="space-y-4 mt-4">
+            <Card>
+              <CardContent className="py-3 text-xs text-muted-foreground">
+                Every live voice and video call right now. Watching joins silently — the people in
+                the call aren't told you're there. Only the site owner can start calls in public
+                rooms; anyone can start one in a private room or a direct message.
+              </CardContent>
+            </Card>
+            {calls.length === 0 && (
+              <p className="text-sm text-muted-foreground py-2">No live calls right now.</p>
+            )}
+            {calls.map((call) => {
+              const parts = callParts.filter((p) => p.call_id === call._row_id);
+              const roomLabel = call.room_id !== null ? roomName(call.room_id) : null;
+              const pair = call.dm_pair ? splitPairKey(call.dm_pair) : null;
+              const label = roomLabel
+                ? `${roomLabel} — room call`
+                : pair
+                  ? `${pair[0]} & ${pair[1]} — private call`
+                  : "Call";
+              return (
+                <Card key={call._row_id}>
+                  <CardContent className="py-3 space-y-2">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate flex items-center gap-2">
+                          <VideoIcon className="w-4 h-4 text-primary shrink-0" />
+                          {label}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Started by @{call.started_by} · {fmtTime(call.started_at)} ·{" "}
+                          {call.type === "dm"
+                            ? "direct message"
+                            : call.type === "private-room"
+                              ? "private room"
+                              : "public room"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isOwner && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setWatchCall({ callId: call._row_id, label })}
+                          >
+                            <Eye className="w-4 h-4 mr-2" /> Watch
+                          </Button>
+                        )}
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={endingCallId === call._row_id}
+                          onClick={async () => {
+                            setEndingCallId(call._row_id);
+                            try {
+                              await endCall(call._row_id);
+                              toast({ title: "Call ended" });
+                            } catch {
+                              toast({ title: "Couldn't end the call", variant: "destructive" });
+                            } finally {
+                              setEndingCallId(null);
+                            }
+                          }}
+                        >
+                          End
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {parts.length === 0 && (
+                        <span className="text-xs text-muted-foreground">Nobody connected right now.</span>
+                      )}
+                      {parts.map((p) => (
+                        <Badge
+                          key={p._row_id}
+                          variant={Number(p.hidden) === 1 ? "outline" : "secondary"}
+                          className="gap-1"
+                        >
+                          @{p.username}
+                          {Number(p.hidden) === 1 && <Eye className="w-3 h-3" />}
+                          {Number(p.muted) === 1 && <MicOff className="w-3 h-3 text-red-400" />}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </TabsContent>
+
           {/* MESSAGES */}
           <TabsContent value="messages" className="space-y-4 mt-4">
             {withSignIn(
@@ -1210,6 +1351,15 @@ const AdminPanel = () => {
                           >
                             Profile
                           </Button>
+                          {isOwner && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDiagUser(acct.username)}
+                            >
+                              Diagnostics
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
@@ -1717,6 +1867,17 @@ const AdminPanel = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <UserDiagnostics username={diagUser} onClose={() => setDiagUser(null)} />
+      {watchCall && (session?.username ?? "owner") && (
+        <CallStage
+          callId={watchCall.callId}
+          me={session?.username ?? "owner"}
+          label={watchCall.label}
+          hidden
+          onLeave={() => setWatchCall(null)}
+        />
+      )}
     </div>
   );
 };

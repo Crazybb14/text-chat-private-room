@@ -9,6 +9,7 @@ import {
   Megaphone,
   Send,
   Users,
+  Video as VideoIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,6 +39,17 @@ import {
   usePresenceHeartbeat,
   type PresenceRow,
 } from "@/lib/presence";
+import CallStage from "@/components/CallStage";
+import {
+  getActiveCallForRoom,
+  getCallParticipants,
+  participantPresent,
+  startCall,
+  type CallSessionRow,
+} from "@/lib/calls";
+import { isOwnerSession } from "@/lib/owner";
+import { useUserPrefs } from "@/lib/userSettings";
+import { playMessageChime } from "@/lib/sound";
 
 interface RoomRow {
   _row_id: number;
@@ -70,6 +82,9 @@ const ChatRoom = () => {
   const [avatars, setAvatars] = useState<Record<string, string>>({});
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [tick, setTick] = useState(0);
+  const [isOwner, setIsOwner] = useState(false);
+  const [activeCall, setActiveCall] = useState<CallSessionRow | null>(null);
+  const [call, setCall] = useState<{ callId: number; label: string } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const messageCountRef = useRef(0);
@@ -83,6 +98,9 @@ const ChatRoom = () => {
   const showOnline = settingBool(settings, "show_online_status");
   const announcement = settingText(settings, "announcement");
   const autoDeleteHours = settingNumber(settings, "auto_delete_hours");
+
+  // Personal preferences (text size, sounds, timestamps, enter-to-send)
+  const { prefs } = useUserPrefs(username);
 
   const rateLimiter = useMemo(
     () => new RateLimiter(settingNumber(settings, "message_rate_per_minute") || 30),
@@ -207,6 +225,7 @@ const ChatRoom = () => {
           return;
         }
         setUsername(currentSession.username);
+        setIsOwner(isOwnerSession(currentSession));
 
         const bans = await db.query("bans", { username: `eq.${currentSession.username}` });
         if (bans.length > 0) {
@@ -252,14 +271,45 @@ const ChatRoom = () => {
     };
   }, [phase, loadMessages, loadPresence, loadTyping, syncTyping]);
 
-  // Auto-scroll when new messages arrive
+  // Auto-scroll + chime when new messages arrive
   useEffect(() => {
     if (messages.length !== messageCountRef.current) {
+      const previous = messageCountRef.current;
       messageCountRef.current = messages.length;
       const el = scrollRef.current;
       if (el) el.scrollTop = el.scrollHeight;
+      const newest = messages[messages.length - 1];
+      if (previous > 0 && prefs.sound && newest && newest.sender_name !== username) {
+        playMessageChime();
+      }
     }
-  }, [messages]);
+  }, [messages, prefs.sound, username]);
+
+  // Live call status for this room
+  useEffect(() => {
+    if (phase !== "ready" || !roomId) return;
+    let stopped = false;
+    const check = async () => {
+      try {
+        const found = await getActiveCallForRoom(Number(roomId));
+        if (stopped) return;
+        if (!found) {
+          setActiveCall(null);
+          return;
+        }
+        const parts = await getCallParticipants(found._row_id);
+        setActiveCall(parts.some((p) => participantPresent(p)) ? found : null);
+      } catch {
+        // best-effort
+      }
+    };
+    void check();
+    const timer = setInterval(check, 5000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [phase, roomId]);
 
   const handleGateSubmit = async (e: SyntheticEvent) => {
     e.preventDefault();
@@ -323,6 +373,26 @@ const ChatRoom = () => {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleStartCall = async () => {
+    if (!roomId) return;
+    const type = room?.type === "private" ? "private-room" : "public-room";
+    try {
+      const result = await startCall({ type, roomId: Number(roomId) });
+      if (result.ok && result.callId) {
+        setCall({ callId: result.callId, label: `${room?.name ?? "Room"} — call` });
+      } else {
+        toast({ title: "Couldn't start the call", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Couldn't start the call", variant: "destructive" });
+    }
+  };
+
+  const handleJoinCall = () => {
+    if (!activeCall) return;
+    setCall({ callId: activeCall._row_id, label: `${room?.name ?? "Room"} — call` });
   };
 
   if (phase === "loading") {
@@ -399,6 +469,8 @@ const ChatRoom = () => {
 
   const slowLeft = slowModeRemaining(lastSentAtRef.current, slowModeSeconds);
   const charsLeft = maxMessageLength - input.length;
+  let roomHue = 0;
+  for (let i = 0; i < room.name.length; i++) roomHue = (roomHue * 31 + room.name.charCodeAt(i)) % 360;
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -408,8 +480,13 @@ const ChatRoom = () => {
             <Button variant="ghost" size="icon" aria-label="Back to rooms" onClick={() => navigate("/")} title="Back to rooms">
               <ArrowLeft className="w-5 h-5" />
             </Button>
-            <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
-              <span className="font-bold text-primary">{room.name.charAt(0).toUpperCase()}</span>
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-white font-bold"
+              style={{
+                background: `linear-gradient(135deg, hsl(${roomHue} 60% 42%), hsl(${(roomHue + 45) % 360} 60% 34%))`,
+              }}
+            >
+              {room.name.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -439,6 +516,17 @@ const ChatRoom = () => {
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {(room.type === "private" || isOwner || activeCall) && (
+              <Button
+                size="sm"
+                variant={activeCall ? "default" : "outline"}
+                className={activeCall ? "gap-1.5 bg-emerald-600 hover:bg-emerald-700" : "gap-1.5"}
+                onClick={activeCall ? handleJoinCall : () => void handleStartCall()}
+              >
+                <VideoIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">{activeCall ? "Join call" : "Start call"}</span>
+              </Button>
+            )}
             <NotificationBell username={username || ""} />
             <Button variant="ghost" size="icon" aria-label="Friends" title="Friends" onClick={() => setFriendsOpen(true)}>
               <Users className="w-5 h-5" />
@@ -471,6 +559,9 @@ const ChatRoom = () => {
               isOwn={message.sender_name === username}
               currentUsername={username || ""}
               avatarUrl={avatars[message.sender_name]}
+              fontSize={prefs.font_size}
+              showTimestamp={prefs.timestamps}
+              compact={prefs.compact}
             />
           ))}
         </div>
@@ -486,7 +577,7 @@ const ChatRoom = () => {
                 syncTyping(e.target.value);
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey && prefs.enter_to_send) {
                   e.preventDefault();
                   handleSend();
                 }
@@ -505,19 +596,31 @@ const ChatRoom = () => {
                   </span>
                 )}
               </span>
-              <span>Enter to send</span>
+              <span>{prefs.enter_to_send ? "Enter to send" : "Send with the button"}</span>
             </div>
           </div>
           <Button
             type="submit"
-            size="icon"
-            className="h-10 self-start mt-0.5"
+            className="h-10 self-start mt-0.5 px-5"
             disabled={sending || !input.trim() || slowLeft > 0}
           >
-            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />}
+            Send
           </Button>
         </form>
       </div>
+
+      {call && username && (
+        <CallStage
+          callId={call.callId}
+          me={username}
+          label={call.label}
+          onLeave={(reason) => {
+            setCall(null);
+            if (reason) toast({ title: reason });
+          }}
+        />
+      )}
 
       <FriendsDialog open={friendsOpen} onClose={() => setFriendsOpen(false)} username={username || ""} />
     </div>

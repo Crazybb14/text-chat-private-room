@@ -32,6 +32,10 @@ scenario(
 
     await step('creates a room', async () => {
       await page.getByRole('button', { name: 'New room' }).click();
+      // Regular accounts can only make private rooms — public rooms are owner-only.
+      await expect(
+        page.getByText('Public rooms can only be created by the site owner')
+      ).toBeVisible();
       await page.getByLabel('Room name').fill('Journey Test Room');
       await page.getByRole('button', { name: 'Create room' }).click();
       await expect(page.getByText('Journey Test Room').first()).toBeVisible();

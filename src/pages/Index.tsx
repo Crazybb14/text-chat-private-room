@@ -40,6 +40,9 @@ import {
   usePresenceHeartbeat,
   type PresenceRow,
 } from "@/lib/presence";
+import { isOwnerSession } from "@/lib/owner";
+import { useUserPrefs } from "@/lib/userSettings";
+import { functions } from "@/lib/shared/kliv-functions.js";
 
 interface RoomRow {
   _row_id: number;
@@ -51,19 +54,13 @@ interface RoomRow {
 
 type Phase = "loading" | "banned" | "downtime" | "finish" | "ready";
 
-const generateRoomCode = () => {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-  return code;
-};
-
 const Index = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { settings } = useAppSettings();
   const [phase, setPhase] = useState<Phase>("loading");
   const [session, setSession] = useState<SessionInfo | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [presence, setPresence] = useState<PresenceRow[]>([]);
   const [roomSearch, setRoomSearch] = useState("");
@@ -83,8 +80,11 @@ const Index = () => {
 
   const username = session?.username ?? null;
 
+  // Personal preferences (online visibility is honored here)
+  const { prefs } = useUserPrefs(username);
+
   // Keep this user's online status fresh everywhere, not just inside rooms
-  usePresenceHeartbeat(username);
+  usePresenceHeartbeat(prefs.show_online ? username : null);
 
   const allowRoomCreation = settingBool(settings, "allow_room_creation");
   const allowPrivateRooms = settingBool(settings, "allow_private_rooms");
@@ -92,7 +92,6 @@ const Index = () => {
   const welcomeMessage = settingText(settings, "welcome_message");
   const announcement = settingText(settings, "announcement");
   const autoDeleteHours = settingNumber(settings, "auto_delete_hours");
-  const maxRoomsPerUser = settingNumber(settings, "max_rooms_per_user");
   const roomNameMax = settingNumber(settings, "room_name_max_length") || 60;
   const showOnline = settingBool(settings, "show_online_status");
 
@@ -121,6 +120,7 @@ const Index = () => {
         return;
       }
       setSession(currentSession);
+      setIsOwner(isOwnerSession(currentSession));
 
       // Refresh the visitor's IP record for the admin panel (self-throttled)
       void UserManager.logLoginIp(currentSession.username);
@@ -228,6 +228,11 @@ const Index = () => {
     }
   };
 
+  const openCreate = () => {
+    setNewRoomType(isOwner ? "public" : "private");
+    setCreateOpen(true);
+  };
+
   const handleCreateRoom = async () => {
     const name = newRoomName.trim();
     if (!name) return;
@@ -239,36 +244,39 @@ const Index = () => {
       });
       return;
     }
+    const wantsPublic = isOwner && newRoomType === "public";
     setCreating(true);
     try {
-      if (session) {
-        const mine = await db.query<RoomRow>("rooms", {
-          _created_by: `eq.${session.userUuid}`,
+      // The server decides who can create what — public rooms need the owner.
+      const result = await functions.post<{
+        ok?: boolean;
+        roomId?: number;
+        code?: string | null;
+        type?: string;
+        error?: string;
+      }>("create-room", { name, type: wantsPublic ? "public" : "private", username });
+      if (!result?.ok || !result.roomId) {
+        toast({
+          title: "Couldn't create room",
+          description: result?.error ?? "Please try again.",
+          variant: "destructive",
         });
-        if (mine.length >= maxRoomsPerUser) {
-          toast({
-            title: "Room limit reached",
-            description: `You've already created ${mine.length} rooms. Ask an admin if you need more.`,
-            variant: "destructive",
-          });
-          return;
-        }
+        return;
       }
-      const type = newRoomType === "private" && allowPrivateRooms ? "private" : "public";
-      const code = type === "private" ? generateRoomCode() : null;
-      const created = await db.insertOne<RoomRow>("rooms", { name, code, type });
+      const type = result.type === "public" ? "public" : "private";
       toast({
         title: "Room created",
-        description: type === "private" ? `Share this code to let people in: ${code}` : undefined,
+        description:
+          type === "private" ? `Share this code to let people in: ${result.code}` : undefined,
       });
       setCreateOpen(false);
       setNewRoomName("");
-      setNewRoomType("public");
+      setNewRoomType(isOwner ? "public" : "private");
       if (type === "private") {
-        sessionStorage.setItem(`room_unlocked_${created._row_id}`, "1");
+        sessionStorage.setItem(`room_unlocked_${result.roomId}`, "1");
       }
       await loadRooms();
-      navigate(`/chat/${created._row_id}`);
+      navigate(`/chat/${result.roomId}`);
     } catch {
       toast({ title: "Couldn't create room", variant: "destructive" });
     } finally {
@@ -363,6 +371,8 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-background pointer-events-none" />
+      <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
+      <div className="absolute top-1/3 -right-32 w-96 h-96 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
 
       <header className="relative z-10 border-b border-white/5 sticky top-0 bg-background/80 backdrop-blur">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -420,9 +430,23 @@ const Index = () => {
                 Room messages auto-clear after {autoDeleteHours}h — private messages stay forever.
               </p>
             )}
+            <div className="flex flex-wrap gap-2 mt-3">
+              <span className="text-xs px-2.5 py-1 rounded-full bg-secondary/70">
+                {publicRooms.length} public room{publicRooms.length === 1 ? "" : "s"}
+              </span>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-secondary/70">
+                {privateRooms.length} private room{privateRooms.length === 1 ? "" : "s"}
+              </span>
+              {showOnline && (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {onlineCount} online now
+                </span>
+              )}
+            </div>
           </div>
           {allowRoomCreation && (
-            <Button onClick={() => setCreateOpen(true)} size="lg">
+            <Button onClick={openCreate} size="lg">
               <Plus className="w-4 h-4 mr-2" /> New room
             </Button>
           )}
@@ -449,9 +473,9 @@ const Index = () => {
             <Card>
               <CardContent className="py-10 text-center text-muted-foreground text-sm">
                 {publicRooms.length === 0
-                  ? allowRoomCreation
+                  ? isOwner && allowRoomCreation
                     ? "No public rooms yet — create the first one!"
-                    : "No public rooms yet."
+                    : "No public rooms yet — the site owner creates public rooms."
                   : "No rooms match that search."}
               </CardContent>
             </Card>
@@ -459,15 +483,22 @@ const Index = () => {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {visiblePublicRooms.map((room) => {
               const online = showOnline ? roomOnline(room._row_id) : 0;
+              let hue = 0;
+              for (let i = 0; i < room.name.length; i++) hue = (hue * 31 + room.name.charCodeAt(i)) % 360;
               return (
                 <Card
                   key={room._row_id}
-                  className="cursor-pointer hover:border-primary/50 hover:-translate-y-0.5 transition-all group"
+                  className="cursor-pointer hover:border-primary/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/10 transition-all group"
                   onClick={() => navigate(`/chat/${room._row_id}`)}
                 >
                   <CardContent className="flex items-center gap-3 py-4">
-                    <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0 group-hover:bg-primary/25 transition-colors">
-                      <MessageSquare className="w-5 h-5 text-primary" />
+                    <div
+                      className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-white font-bold"
+                      style={{
+                        background: `linear-gradient(135deg, hsl(${hue} 60% 42%), hsl(${(hue + 45) % 360} 60% 34%))`,
+                      }}
+                    >
+                      {room.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold truncate">{room.name}</p>
@@ -524,9 +555,11 @@ const Index = () => {
                     <UserPlus className="w-4 h-4" /> Your own room
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    Make a public room anyone can join, or a private room that needs a code.
+                    {isOwner
+                      ? "Make a public room anyone can join, or a private room that needs a code."
+                      : "Your rooms are private — share the code with the people you invite."}
                   </p>
-                  <Button variant="outline" onClick={() => setCreateOpen(true)}>
+                  <Button variant="outline" onClick={openCreate}>
                     <Plus className="w-4 h-4 mr-2" /> Create a room
                   </Button>
                 </CardContent>
@@ -576,26 +609,31 @@ const Index = () => {
                 {newRoomName.length}/{roomNameMax}
               </p>
             </div>
-            {allowPrivateRooms && (
-              <div className="space-y-2">
-                <Label>Room type</Label>
-                <Select value={newRoomType} onValueChange={setNewRoomType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="public">Public — anyone can join</SelectItem>
+            <div className="space-y-2">
+              <Label>Room type</Label>
+              <Select value={newRoomType} onValueChange={setNewRoomType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {isOwner && <SelectItem value="public">Public — anyone can join</SelectItem>}
+                  {(allowPrivateRooms || !isOwner) && (
                     <SelectItem value="private">Private — join code required</SelectItem>
-                  </SelectContent>
-                </Select>
-                {newRoomType === "private" && (
-                  <p className="text-xs text-muted-foreground">
-                    A 6-character code will be generated — share it with the people you want in the
-                    room.
-                  </p>
-                )}
-              </div>
-            )}
+                  )}
+                </SelectContent>
+              </Select>
+              {!isOwner ? (
+                <p className="text-xs text-muted-foreground">
+                  Public rooms can only be created by the site owner. Yours will be private with a
+                  share code.
+                </p>
+              ) : newRoomType === "private" ? (
+                <p className="text-xs text-muted-foreground">
+                  A 6-character code will be generated — share it with the people you want in the
+                  room.
+                </p>
+              ) : null}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>

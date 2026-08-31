@@ -1,12 +1,14 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, ArrowLeft, Eye, EyeOff, Lock } from "lucide-react";
+import { Shield, ArrowLeft, Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import UserManager from "@/lib/userManagement";
+import { isOwnerSession } from "@/lib/owner";
 
-// Admin password only
+// Fallback admin password for non-owner admins
 const ADMIN_PASSWORD = "qacgt5555$";
 
 const AdminLogin = () => {
@@ -15,12 +17,32 @@ const AdminLogin = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
+
+  // Owner accounts skip the code entirely — the platform vouches for them.
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      const session = await UserManager.getSession().catch(() => null);
+      if (cancelled) return;
+      if (isOwnerSession(session)) {
+        localStorage.setItem("isAdmin", "true");
+        toast({ title: "Owner account recognized", description: "Opening the admin panel…" });
+        navigate("/admin/panel", { replace: true });
+        return;
+      }
+      setChecking(false);
+    };
+    void check();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, toast]);
 
   const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Password-only check
     setTimeout(() => {
       if (password === ADMIN_PASSWORD) {
         localStorage.setItem("isAdmin", "true");
@@ -66,37 +88,47 @@ const AdminLogin = () => {
               Admin Access
             </CardTitle>
             <CardDescription className="text-base">
-              Enter your password to continue
+              {checking ? "Checking your account…" : "Owner accounts enter automatically"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleLogin} className="space-y-5">
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="bg-secondary/50 border-white/10 pl-11 pr-11 h-12 text-lg"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
+            {checking ? (
+              <div className="py-8 flex flex-col items-center gap-3 text-muted-foreground">
+                <Loader2 className="w-7 h-7 animate-spin" />
+                <p className="text-sm">Signing you in as the owner…</p>
               </div>
-              <Button
-                type="submit"
-                disabled={isLoading || !password}
-                className="w-full h-12 text-lg bg-gradient-to-r from-red-600 to-purple-600 hover:from-red-700 hover:to-purple-700 shadow-lg"
-              >
-                {isLoading ? "Verifying..." : "Access Admin Panel"}
-              </Button>
-            </form>
+            ) : (
+              <form onSubmit={handleLogin} className="space-y-5">
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="bg-secondary/50 border-white/10 pl-11 pr-11 h-12 text-lg"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+                <Button
+                  type="submit"
+                  disabled={isLoading || !password}
+                  className="w-full h-12 text-lg bg-gradient-to-r from-red-600 to-purple-600 hover:from-red-700 hover:to-purple-700 shadow-lg"
+                >
+                  {isLoading ? "Verifying..." : "Access Admin Panel"}
+                </Button>
+                <p className="text-xs text-center text-muted-foreground">
+                  Signed in with an owner account? Just open this page — no password needed.
+                </p>
+              </form>
+            )}
           </CardContent>
         </Card>
       </div>

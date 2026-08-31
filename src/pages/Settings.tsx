@@ -8,9 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import UserManager from "@/lib/userManagement";
 import { getProfile, saveProfile } from "@/lib/friends";
+import { useUserPrefs } from "@/lib/userSettings";
 
 const STATUSES = ["online", "away", "busy", "offline"];
 
@@ -54,6 +56,7 @@ const Settings = () => {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { prefs, update } = useUserPrefs(username);
 
   useEffect(() => {
     const init = async () => {
@@ -203,6 +206,90 @@ const Settings = () => {
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
               Save
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Chat experience</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Message text size</p>
+                <p className="text-xs text-muted-foreground">Applies in rooms and private messages.</p>
+              </div>
+              <Select value={String(prefs.font_size)} onValueChange={(v) => update({ font_size: Number(v) })}>
+                <SelectTrigger className="w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="13">Small</SelectItem>
+                  <SelectItem value="15">Normal</SelectItem>
+                  <SelectItem value="17">Large</SelectItem>
+                  <SelectItem value="19">Bigger</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Sound on new message</p>
+                <p className="text-xs text-muted-foreground">A soft chime when someone messages you.</p>
+              </div>
+              <Switch
+                checked={prefs.sound}
+                onCheckedChange={(v) => update({ sound: v })}
+                aria-label="Sound on new message"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Show me as online</p>
+                <p className="text-xs text-muted-foreground">
+                  Turn off to keep your status hidden from everyone.
+                </p>
+              </div>
+              <Switch
+                checked={prefs.show_online}
+                onCheckedChange={(v) => update({ show_online: v })}
+                aria-label="Show me as online"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Enter sends the message</p>
+                <p className="text-xs text-muted-foreground">
+                  Off means Enter makes a new line and you send with the Send button.
+                </p>
+              </div>
+              <Switch
+                checked={prefs.enter_to_send}
+                onCheckedChange={(v) => update({ enter_to_send: v })}
+                aria-label="Enter sends the message"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Show message times</p>
+                <p className="text-xs text-muted-foreground">Timestamps next to each message.</p>
+              </div>
+              <Switch
+                checked={prefs.timestamps}
+                onCheckedChange={(v) => update({ timestamps: v })}
+                aria-label="Show message times"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Compact messages</p>
+                <p className="text-xs text-muted-foreground">Tighter spacing between messages.</p>
+              </div>
+              <Switch
+                checked={prefs.compact}
+                onCheckedChange={(v) => update({ compact: v })}
+                aria-label="Compact messages"
+              />
+            </div>
           </CardContent>
         </Card>
 
