@@ -12,7 +12,7 @@ scenario(
     });
 
     await step('correct password opens the panel', async () => {
-      await page.getByPlaceholder('Enter password').fill('qacgt5');
+      await page.getByPlaceholder('Enter password').fill('qacgt5555$');
       await page.getByRole('button', { name: 'Access Admin Panel' }).click();
       await expect(page.getByText('Admin Panel').first()).toBeVisible();
     });
@@ -52,7 +52,7 @@ scenario(
 
     await step('opens the admin panel with the password', async () => {
       await page.goto('/admin');
-      await page.getByPlaceholder('Enter password').fill('qacgt5');
+      await page.getByPlaceholder('Enter password').fill('qacgt5555$');
       await page.getByRole('button', { name: 'Access Admin Panel' }).click();
       await expect(page.getByText('Admin Panel').first()).toBeVisible();
     });
