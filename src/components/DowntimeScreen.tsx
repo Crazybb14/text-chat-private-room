@@ -204,16 +204,20 @@ export type DowntimeInfo = {
 
 export async function getActiveDowntime(): Promise<DowntimeInfo | null> {
   try {
-    const rows = await db.query<{ end_time: number; message: string }>("downtime_schedules", {
-      end_time: `gte.${Math.floor(Date.now() / 1000)}`,
+    const now = Date.now();
+    const rows = await db.query<{ end_time: number; reason: string | null }>("downtime_schedules", {
+      is_active: "eq.1",
+      start_time: `lte.${now}`,
+      end_time: `gt.${now}`,
       order: "end_time.asc",
       limit: "1",
     });
     if (rows.length === 0) return null;
     const row = rows[0];
+    // start_time / end_time are stored in milliseconds (see AdminPanel).
     return {
-      endTime: (row.end_time as number) * 1000,
-      message: row.message || "",
+      endTime: Number(row.end_time),
+      message: row.reason || "",
     };
   } catch {
     return null;
