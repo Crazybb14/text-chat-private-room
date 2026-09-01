@@ -84,6 +84,7 @@ import AdminManagers, { MakeAdminDialog } from "@/components/AdminManagers";
 import {
   getActiveLocks,
   isActiveLock,
+  kickAccount,
   lockAccount,
   unlockAccount,
   type AccountLockRow,
@@ -279,6 +280,9 @@ const AdminPanel = () => {
   const [lockTarget, setLockTarget] = useState<string | null>(null);
   const [lockReason, setLockReason] = useState("");
   const [lockBusy, setLockBusy] = useState(false);
+
+  // Kick: force a user to sign in again
+  const [kickingUser, setKickingUser] = useState<string | null>(null);
 
   // Settings + cleanup
   const { settings, loaded: settingsLoaded, update: updateSetting, reload: reloadSettings } = useAppSettings();
@@ -541,6 +545,23 @@ const AdminPanel = () => {
       await refreshLocks();
     } finally {
       setLockBusy(false);
+    }
+  };
+
+  const handleKickAccount = async (target: string) => {
+    setKickingUser(target);
+    try {
+      const result = await kickAccount(target);
+      if (result.error) {
+        toast({ title: "Couldn't kick that account", description: result.error, variant: "destructive" });
+        return;
+      }
+      toast({
+        title: `@${target} was kicked`,
+        description: "They're signed out and will need to log in again.",
+      });
+    } finally {
+      setKickingUser(null);
     }
   };
 
@@ -1510,6 +1531,20 @@ const AdminPanel = () => {
                             onClick={() => navigate(`/profile/${acct.username}`)}
                           >
                             Profile
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            title="Sign them out — they'll have to log in again"
+                            disabled={kickingUser === acct.username}
+                            onClick={() => handleKickAccount(acct.username)}
+                          >
+                            {kickingUser === acct.username ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <LogOut className="w-4 h-4 mr-2" />
+                            )}
+                            Kick
                           </Button>
                           {isOwner && (
                             <Button

@@ -21,6 +21,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import UserManager from "@/lib/userManagement";
+import { useKickWatch } from "@/lib/kickWatch";
 import CallStage from "@/components/CallStage";
 import {
   filterMessage,
@@ -174,6 +175,9 @@ const DirectMessage = () => {
   const dmsAllowed = settingBool(settings, "allow_direct_messages");
   const [targetOnline, setTargetOnline] = useState(false);
   const { prefs } = useUserPrefs(me);
+
+  // If an admin kicks this account, sign out and go back to the login page.
+  useKickWatch(me);
   const displayName = (profile?.display_name as string) || target;
 
   // Live online dot for the other person

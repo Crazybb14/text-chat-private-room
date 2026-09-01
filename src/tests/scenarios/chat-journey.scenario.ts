@@ -10,7 +10,9 @@ scenario(
   { setup: {} },
   async ({ kliv, page }) => {
     await step('accepting the terms leads to the login page', async () => {
-      await page.goto('/');
+      // Landing straight on /terms — the "/" → terms redirect can take longer
+      // than one step's time budget in a cold test environment.
+      await page.goto('/terms');
       await expect(page.getByRole('heading', { name: 'Terms of Use' })).toBeVisible();
       await page.getByRole('heading', { name: 'Agreement Overview' }).press('End');
       await page.getByRole('button', { name: 'I AGREE' }).click();

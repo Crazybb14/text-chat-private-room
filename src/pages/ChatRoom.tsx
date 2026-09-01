@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import { getDeviceId } from "@/lib/deviceId";
 import UserManager from "@/lib/userManagement";
+import { useKickWatch } from "@/lib/kickWatch";
 import MessageBubble, { type ChatMessage } from "@/components/MessageBubble";
 import NotificationBell from "@/components/NotificationBell";
 import FriendsDialog from "@/components/FriendsDialog";
@@ -84,6 +85,9 @@ const ChatRoom = () => {
   const [phase, setPhase] = useState<Phase>("loading");
   const [room, setRoom] = useState<RoomRow | null>(null);
   const [username, setUsername] = useState<string | null>(null);
+
+  // If an admin kicks this account, sign out and go back to the login page.
+  useKickWatch(username);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);

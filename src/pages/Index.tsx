@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import UserManager, { type SessionInfo } from "@/lib/userManagement";
+import { useKickWatch } from "@/lib/kickWatch";
 import NotificationBell from "@/components/NotificationBell";
 import FriendsDialog from "@/components/FriendsDialog";
 import PermissionPrompt from "@/components/PermissionPrompt";
@@ -83,6 +84,9 @@ const Index = () => {
   const { settings } = useAppSettings();
   const [phase, setPhase] = useState<Phase>("loading");
   const [session, setSession] = useState<SessionInfo | null>(null);
+
+  // If an admin kicks this account, sign out and go back to the login page.
+  useKickWatch(session?.username ?? null);
   const [isOwner, setIsOwner] = useState(false);
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [presence, setPresence] = useState<PresenceRow[]>([]);

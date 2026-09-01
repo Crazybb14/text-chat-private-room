@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2, LogIn, MessageSquare, UserPlus, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import auth from "@/lib/shared/kliv-auth.js";
 import UserManager from "@/lib/userManagement";
+import { markSignedInNow } from "@/lib/kickWatch";
 import { validateSignup } from "@/lib/signupValidation";
 import { settingBool, settingText, useAppSettings } from "@/lib/appSettings";
 import DowntimeScreen, { getActiveDowntime, type DowntimeInfo } from "@/components/DowntimeScreen";
@@ -23,6 +24,8 @@ type OAuthProviderOption = { provider: "google" | "facebook" | "apple"; label: s
 
 const Login = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const kickedOut = searchParams.get("kicked") === "1";
   const { toast } = useToast();
 
   const [checked, setChecked] = useState(false);
@@ -98,6 +101,7 @@ const Login = () => {
         return;
       }
       toast({ title: "Welcome back!" });
+      markSignedInNow();
       await UserManager.logLoginIp(null);
       void UserManager.recordLoginPassword(siEmail.trim(), siPassword);
       navigate("/", { replace: true });
@@ -155,6 +159,7 @@ const Login = () => {
         password,
       });
       await UserManager.logLoginIp(chosen);
+      markSignedInNow();
       toast({ title: "Account created", description: `Welcome to ${siteName}!` });
       navigate("/", { replace: true });
     } catch (err) {
@@ -190,6 +195,11 @@ const Login = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {kickedOut && (
+              <p className="mb-4 text-sm text-center text-amber-500">
+                You were signed out by an administrator — please log in again.
+              </p>
+            )}
             <Tabs defaultValue="signin">
               <TabsList className="grid grid-cols-2 w-full mb-4">
                 <TabsTrigger value="signin">Log in</TabsTrigger>

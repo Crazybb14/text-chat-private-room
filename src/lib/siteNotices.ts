@@ -195,3 +195,8 @@ export async function lockAccount(
 export async function unlockAccount(username: string, auth?: AdminAuth): Promise<ControlResult> {
   return control({ action: "unlock-account", username, ...authParams(auth) });
 }
+
+/** Kicks a user: signs them out everywhere so they must log in again. */
+export async function kickAccount(username: string, auth?: AdminAuth): Promise<ControlResult> {
+  return control({ action: "kick-account", username, ...authParams(auth) });
+}

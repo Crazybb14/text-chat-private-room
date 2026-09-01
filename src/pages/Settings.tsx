@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import UserManager from "@/lib/userManagement";
+import { useKickWatch } from "@/lib/kickWatch";
 import { getFriends, getProfile, saveProfile } from "@/lib/friends";
 import { useUserPrefs } from "@/lib/userSettings";
 import type { AutoJoinMode } from "@/lib/autoJoin";
@@ -59,6 +60,9 @@ const Settings = () => {
   const [friends, setFriends] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { prefs, update } = useUserPrefs(username);
+
+  // If an admin kicks this account, sign out and go back to the login page.
+  useKickWatch(username);
 
   useEffect(() => {
     const init = async () => {
