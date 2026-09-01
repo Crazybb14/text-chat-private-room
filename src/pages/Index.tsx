@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  Activity,
   Clock,
+  Copy,
+  History,
   Lightbulb,
   Loader2,
   Lock,
@@ -12,7 +15,9 @@ import {
   Phone,
   Plus,
   Radio,
+  RefreshCw,
   Search,
+  Send,
   Settings as SettingsIcon,
   Shield,
   UserPlus,
@@ -25,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import UserManager, { type SessionInfo } from "@/lib/userManagement";
@@ -51,6 +57,17 @@ import { functions } from "@/lib/shared/kliv-functions.js";
 import BanScreen from "@/components/BanScreen";
 import { checkBanStatus, type BanStatus } from "@/lib/moderation";
 import { allPermissions, getAdminSession, saveAdminSession } from "@/lib/adminAccounts";
+import {
+  getActiveLockFor,
+  getNotices,
+  getReloadState,
+  getSiteStats,
+  shouldShowReload,
+  type AccountLockRow,
+  type ReloadState,
+  type SiteStats,
+  type VersionNotice,
+} from "@/lib/siteNotices";
 
 interface RoomRow extends RoomKindRow {
   code: string | null;
@@ -58,7 +75,7 @@ interface RoomRow extends RoomKindRow {
   [key: string]: unknown;
 }
 
-type Phase = "loading" | "banned" | "downtime" | "finish" | "ready";
+type Phase = "loading" | "banned" | "locked" | "downtime" | "finish" | "ready";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -81,6 +98,17 @@ const Index = () => {
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [downtime, setDowntime] = useState<DowntimeInfo | null>(null);
   const [banInfo, setBanInfo] = useState<BanStatus | null>(null);
+  const [lockInfo, setLockInfo] = useState<AccountLockRow | null>(null);
+
+  // Version notices, the owner's "reload" flag, and live site stats
+  const [notices, setNotices] = useState<VersionNotice[]>([]);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [reloadFlag, setReloadFlag] = useState<ReloadState>({ at: 0, message: "" });
+  const [reloadDismissedAt, setReloadDismissedAt] = useState(0);
+  const [stats, setStats] = useState<SiteStats>({ members: 0, messages: 0, rooms: 0, feedback: 0 });
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const pageLoadedAt = useRef(Date.now());
 
   // One-time profile completion
   const [profileUsername, setProfileUsername] = useState("");
@@ -156,6 +184,12 @@ const Index = () => {
     }
   }, []);
 
+  const loadStatsAndNotices = useCallback(async () => {
+    const [nextStats, nextNotices] = await Promise.all([getSiteStats(), getNotices()]);
+    setStats(nextStats);
+    setNotices(nextNotices);
+  }, []);
+
   useEffect(() => {
     const init = async () => {
       if (!localStorage.getItem("terms_accepted")) {
@@ -192,11 +226,21 @@ const Index = () => {
         return;
       }
 
+      // The owner can lock an account while fixing something on it
+      const activeLock = await getActiveLockFor(currentSession.username);
+      if (activeLock) {
+        setLockInfo(activeLock);
+        setPhase("locked");
+        return;
+      }
+
       setPhase("ready");
       loadRooms();
+      loadStatsAndNotices();
+      setReloadFlag(await getReloadState());
     };
     init();
-  }, [navigate, loadRooms]);
+  }, [navigate, loadRooms, loadStatsAndNotices]);
 
   // Poll for downtime + refresh rooms/presence while the site is usable
   useEffect(() => {
@@ -209,9 +253,11 @@ const Index = () => {
         return;
       }
       loadRooms();
+      loadStatsAndNotices();
+      setReloadFlag(await getReloadState());
     }, 30000);
     return () => clearInterval(interval);
-  }, [phase, loadRooms]);
+  }, [phase, loadRooms, loadStatsAndNotices]);
 
   const handleSaveUsername = async (e: FormEvent) => {
     e.preventDefault();
@@ -273,6 +319,22 @@ const Index = () => {
     }
     await UserManager.signOut();
     navigate("/login", { replace: true });
+  };
+
+  const handleSendFeedback = async () => {
+    const content = feedbackText.trim();
+    if (!content || !username) return;
+    setFeedbackBusy(true);
+    try {
+      await db.insertOne("suggestions", { content, username });
+      setFeedbackText("");
+      toast({ title: "Thanks!", description: "Your suggestion went straight to the site owner." });
+      loadStatsAndNotices();
+    } catch {
+      toast({ title: "Couldn't send that", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setFeedbackBusy(false);
+    }
   };
 
   const handleJoinByCode = async () => {
@@ -375,6 +437,33 @@ const Index = () => {
     return <DowntimeScreen endTime={downtime.endTime} message={downtime.message} onBypass={() => setDowntime(null)} />;
   }
 
+  if (phase === "locked" && lockInfo) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-background to-background pointer-events-none" />
+        <Card className="relative z-10 w-full max-w-md">
+          <CardContent className="py-8 space-y-4 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/15 flex items-center justify-center mx-auto">
+              <Lock className="w-7 h-7 text-amber-500" />
+            </div>
+            <h1 className="text-2xl font-bold">Your account is temporarily locked</h1>
+            <p className="text-sm text-muted-foreground break-words">
+              {lockInfo.reason
+                ? lockInfo.reason
+                : "The site owner is working on your account right now — it'll be back shortly."}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This isn't a ban. Check back in a little while.
+            </p>
+            <Button variant="outline" className="w-full" onClick={handleSignOut}>
+              <LogOut className="w-4 h-4 mr-2" /> Sign out
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (phase === "finish") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -422,6 +511,11 @@ const Index = () => {
   ).size;
   const roomOnline = (roomId: number) =>
     presence.filter((p) => Number(p.room_id) === roomId && isPresenceOnline(p, now)).length;
+
+  // The visitor's own private rooms, so they can always find the join code
+  const myPrivateRooms = username
+    ? privateRooms.filter((r) => String(r.created_by ?? "").toLowerCase() === username)
+    : [];
 
   const search = roomSearch.trim().toLowerCase();
   const visiblePublicRooms = search
@@ -472,6 +566,28 @@ const Index = () => {
             <CardContent className="py-3.5 flex items-start gap-3">
               <Megaphone className="w-4 h-4 text-primary mt-0.5 shrink-0" />
               <p className="text-sm break-words">{announcement}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {shouldShowReload(reloadFlag.at, pageLoadedAt.current, reloadDismissedAt) && (
+          <Card className="border-emerald-500/40 bg-emerald-500/5">
+            <CardContent className="py-3.5 flex items-center gap-3 flex-wrap sm:flex-nowrap">
+              <RefreshCw className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">A new version of {siteName} was just released</p>
+                <p className="text-xs text-muted-foreground break-words">
+                  {reloadFlag.message || "Reload the page to pick up the newest version."}
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <Button size="sm" onClick={() => window.location.reload()}>
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Reload now
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setReloadDismissedAt(Date.now())}>
+                  Dismiss
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -697,6 +813,29 @@ const Index = () => {
                   <Button variant="outline" onClick={openCreate}>
                     <Plus className="w-4 h-4 mr-2" /> Create a room
                   </Button>
+                  {myPrivateRooms.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <p className="text-xs font-medium">Your private room codes</p>
+                      {myPrivateRooms.slice(0, 6).map((r) => (
+                        <div key={r._row_id} className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-muted-foreground truncate">{r.name}</span>
+                          <button
+                            type="button"
+                            className="text-xs font-mono px-2 py-0.5 rounded bg-secondary/70 hover:bg-secondary flex items-center gap-1 shrink-0"
+                            title="Click to copy this code"
+                            onClick={() => {
+                              void navigator.clipboard
+                                .writeText(r.code ?? "")
+                                .then(() => toast({ title: "Copied", description: r.code ?? "" }))
+                                .catch(() => toast({ title: "Room code", description: r.code ?? "" }));
+                            }}
+                          >
+                            {r.code} <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -708,6 +847,69 @@ const Index = () => {
             <LogIn className="w-3.5 h-3.5" /> Room creation is currently turned off by the site admin.
           </p>
         )}
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase text-muted-foreground flex items-center gap-2">
+            <Activity className="w-4 h-4" /> Site activity
+          </h2>
+          <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardContent className="py-4 text-center">
+                <p className="text-2xl font-bold text-emerald-400">{onlineCount}</p>
+                <p className="text-xs text-muted-foreground">online right now</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4 text-center">
+                <p className="text-2xl font-bold">{stats.members}</p>
+                <p className="text-xs text-muted-foreground">members</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4 text-center">
+                <p className="text-2xl font-bold">{stats.messages.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">messages sent</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4 text-center">
+                <p className="text-2xl font-bold">{stats.rooms}</p>
+                <p className="text-xs text-muted-foreground">rooms</p>
+              </CardContent>
+            </Card>
+          </div>
+          <Card>
+            <CardContent className="py-5 space-y-3">
+              <h3 className="font-semibold flex items-center gap-2 text-sm">
+                <Lightbulb className="w-4 h-4 text-yellow-500" /> Feedback &amp; suggestions
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {stats.feedback > 0
+                  ? `${stats.feedback} suggestion${stats.feedback === 1 ? "" : "s"} sent in so far — add yours below.`
+                  : "Tell the site owner what to add or fix — yours would be the first."}
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="What should be added or improved?"
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendFeedback()}
+                  maxLength={500}
+                />
+                <Button onClick={handleSendFeedback} disabled={!feedbackText.trim() || feedbackBusy}>
+                  {feedbackBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  <span className="hidden sm:inline ml-1.5">Send</span>
+                </Button>
+              </div>
+              <button
+                type="button"
+                className="text-xs text-primary/80 hover:underline"
+                onClick={() => navigate("/suggestions")}
+              >
+                See your suggestions →
+              </button>
+            </CardContent>
+          </Card>
+        </section>
       </main>
 
       <footer className="relative z-10 border-t border-white/5 py-4">
@@ -728,6 +930,42 @@ const Index = () => {
         </DialogContent>
       </Dialog>
       <PermissionPrompt />
+
+      {notices.length > 0 && (
+        <Button
+          size="sm"
+          className="fixed bottom-5 right-5 z-40 rounded-full shadow-lg shadow-primary/20 gap-2"
+          onClick={() => setWhatsNewOpen(true)}
+          aria-label="What's new"
+        >
+          <History className="w-4 h-4" /> What&apos;s new · v{notices[0].version}
+        </Button>
+      )}
+
+      <Dialog open={whatsNewOpen} onOpenChange={setWhatsNewOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>What&apos;s new on {siteName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+            {notices.map((notice) => (
+              <div
+                key={notice._row_id}
+                className="space-y-1.5 border-b border-white/5 pb-3 last:border-0 last:pb-0"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="secondary" className="font-mono">v{notice.version}</Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date((notice.posted_at || 0) * 1000).toLocaleDateString()}
+                  </span>
+                </div>
+                {notice.title && <p className="font-semibold">{notice.title}</p>}
+                <p className="text-sm text-muted-foreground whitespace-pre-line break-words">{notice.body}</p>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>

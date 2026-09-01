@@ -15,6 +15,7 @@ import {
   Lightbulb,
   Loader2,
   Lock,
+  LockOpen,
   LogIn,
   LogOut,
   MessageSquare,
@@ -78,7 +79,15 @@ import { isOwnerSession } from "@/lib/owner";
 import AdminDirectMessages from "@/components/AdminDirectMessages";
 import AdminFiles from "@/components/AdminFiles";
 import AdminNotifications from "@/components/AdminNotifications";
+import AdminVersionNotices from "@/components/AdminVersionNotices";
 import AdminManagers, { MakeAdminDialog } from "@/components/AdminManagers";
+import {
+  getActiveLocks,
+  isActiveLock,
+  lockAccount,
+  unlockAccount,
+  type AccountLockRow,
+} from "@/lib/siteNotices";
 import AdminAI from "@/components/AdminAI";
 import AdminModeration from "@/components/AdminModeration";
 import AdminWordList from "@/components/AdminWordList";
@@ -265,6 +274,12 @@ const AdminPanel = () => {
   const [adminSession, setAdminSession] = useState<AdminSession | null>(null);
   const [makeAdminTarget, setMakeAdminTarget] = useState<string | null>(null);
 
+  // Account locks (owner locks someone out while fixing their account)
+  const [locks, setLocks] = useState<AccountLockRow[]>([]);
+  const [lockTarget, setLockTarget] = useState<string | null>(null);
+  const [lockReason, setLockReason] = useState("");
+  const [lockBusy, setLockBusy] = useState(false);
+
   // Settings + cleanup
   const { settings, loaded: settingsLoaded, update: updateSetting, reload: reloadSettings } = useAppSettings();
   const [purgeInfo, setPurgeInfo] = useState<{ at: number; count: number } | null>(null);
@@ -345,7 +360,7 @@ const AdminPanel = () => {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [roomRows, banRows, reportRows, suggestionRows, downtimeRows, profileRows, presenceRows] =
+      const [roomRows, banRows, reportRows, suggestionRows, downtimeRows, profileRows, presenceRows, lockRows] =
         await Promise.all([
           db.query<RoomRow>("rooms", { order: "_row_id.asc" }),
           db.query<BanRow>("bans", { order: "_created_at.desc" }),
@@ -354,6 +369,7 @@ const AdminPanel = () => {
           db.query<DowntimeRow>("downtime_schedules", { order: "start_time.desc" }),
           db.query<ProfileAccountRow>("user_profiles", { order: "_created_at.desc" }),
           db.query<PresenceRow>("online_users", { order: "last_seen.desc" }),
+          db.query<AccountLockRow>("account_locks", { order: "locked_at.desc" }),
         ]);
       setRooms(roomRows);
       setBans(banRows);
@@ -362,6 +378,7 @@ const AdminPanel = () => {
       setDowntimes(downtimeRows);
       setProfiles(profileRows);
       setPresence(presenceRows);
+      setLocks(lockRows);
     } catch (error) {
       console.error("Admin load failed:", error);
       toast({ title: "Couldn't load admin data", variant: "destructive" });
@@ -486,6 +503,46 @@ const AdminPanel = () => {
       return next;
     });
   const bannedUsernames = new Set(bans.map((b) => b.username));
+  const lockedUsernames = new Set(locks.filter(isActiveLock).map((l) => l.username));
+
+  const refreshLocks = async () => {
+    setLocks(await getActiveLocks());
+  };
+
+  const handleLockAccount = async (target: string) => {
+    setLockBusy(true);
+    try {
+      const result = await lockAccount(target, lockReason);
+      if (result.error) {
+        toast({ title: "Couldn't lock that account", description: result.error, variant: "destructive" });
+        return;
+      }
+      toast({
+        title: `@${target} is locked out`,
+        description: "They'll see a temporarily-locked screen until you unlock the account.",
+      });
+      setLockTarget(null);
+      setLockReason("");
+      await refreshLocks();
+    } finally {
+      setLockBusy(false);
+    }
+  };
+
+  const handleUnlockAccount = async (target: string) => {
+    setLockBusy(true);
+    try {
+      const result = await unlockAccount(target);
+      if (result.error) {
+        toast({ title: "Couldn't unlock that account", description: result.error, variant: "destructive" });
+        return;
+      }
+      toast({ title: `@${target} can sign back in`, description: "The lock is lifted." });
+      await refreshLocks();
+    } finally {
+      setLockBusy(false);
+    }
+  };
 
   const handleCreateRoom = async () => {
     const name = newRoomName.trim();
@@ -914,6 +971,7 @@ const AdminPanel = () => {
             )}
             {can("people") && <TabsTrigger value="suggestions">Suggestions</TabsTrigger>}
             {can("notifications") && <TabsTrigger value="notifications">Notifications</TabsTrigger>}
+            {can("notifications") && <TabsTrigger value="updates">Updates</TabsTrigger>}
             {can("downtime") && <TabsTrigger value="downtime">Downtime</TabsTrigger>}
             {can("settings") && <TabsTrigger value="settings">Settings</TabsTrigger>}
             {isOwner && <TabsTrigger value="download">Download</TabsTrigger>}
@@ -1423,6 +1481,9 @@ const AdminPanel = () => {
                               {acct.online ? "online" : "offline"}
                             </Badge>
                             {bannedUsernames.has(acct.username) && <Badge variant="destructive">banned</Badge>}
+                            {lockedUsernames.has(acct.username) && (
+                              <Badge className="bg-amber-600">locked</Badge>
+                            )}
                           </p>
                           <p className="text-xs text-muted-foreground break-words">
                             {acct.name || "No name"} · {acct.email ?? "email hidden"}
@@ -1498,6 +1559,20 @@ const AdminPanel = () => {
                           >
                             <KeyRound className="w-4 h-4" />
                           </Button>
+                          {lockedUsernames.has(acct.username) ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={lockBusy}
+                              onClick={() => handleUnlockAccount(acct.username)}
+                            >
+                              <LockOpen className="w-4 h-4 mr-2" /> Unlock
+                            </Button>
+                          ) : (
+                            <Button variant="outline" size="sm" onClick={() => setLockTarget(acct.username)}>
+                              <Lock className="w-4 h-4 mr-2" /> Lock
+                            </Button>
+                          )}
                           {bannedUsernames.has(acct.username) ? (
                             <Button variant="outline" size="sm" onClick={() => handleUnban(acct.username)}>
                               Unban
@@ -1956,6 +2031,15 @@ const AdminPanel = () => {
             {can("notifications") ? <AdminNotifications /> : NoPermission}
           </TabsContent>
 
+          {/* UPDATES — version notices + "everyone reload" broadcast */}
+          <TabsContent value="updates" className="space-y-4 mt-4">
+            {can("notifications") ? (
+              <AdminVersionNotices isOwner={isOwner} adminUsername={adminSession?.username ?? ""} />
+            ) : (
+              NoPermission
+            )}
+          </TabsContent>
+
           {/* ADMINS */}
           <TabsContent value="admins" className="space-y-4 mt-4">
             {can("admins") ? <AdminManagers ownerEmail={session?.email ?? null} /> : NoPermission}
@@ -1995,6 +2079,42 @@ const AdminPanel = () => {
       </main>
 
       {/* RESET PASSWORD DIALOG */}
+      <Dialog open={lockTarget !== null} onOpenChange={(open) => !open && setLockTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Lock @{lockTarget} out of their account?</DialogTitle>
+            <DialogDescription>
+              They&apos;ll see a &quot;temporarily locked&quot; screen instead of the site — handy while
+              you fix something on their account. This is not a ban, and you can unlock them any
+              time from this same tab.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="lock-reason">Reason (shown to them)</Label>
+            <Input
+              id="lock-reason"
+              value={lockReason}
+              onChange={(e) => setLockReason(e.target.value)}
+              placeholder="Fixing something on your account — back soon"
+              maxLength={300}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setLockTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={lockBusy}
+              onClick={() => lockTarget && handleLockAccount(lockTarget)}
+            >
+              {lockBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4 mr-2" />}
+              Lock account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={pwTarget !== null} onOpenChange={(open) => !open && setPwTarget(null)}>
         <DialogContent>
           <DialogHeader>

@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Clock,
+  Copy,
   Loader2,
   Lock,
   Megaphone,
@@ -629,6 +630,26 @@ const ChatRoom = () => {
                   <Badge variant="secondary" className="gap-1 shrink-0">
                     <Lock className="w-3 h-3" /> Private
                   </Badge>
+                )}
+                {room.type === "private" && room.code && (
+                  <button
+                    type="button"
+                    className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-secondary/70 hover:bg-secondary flex items-center gap-1 shrink-0"
+                    title="Click to copy this room's join code"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(room.code ?? "")
+                        .then(() =>
+                          toast({
+                            title: "Room code copied",
+                            description: `${room.code} — share it to let people into ${room.name}.`,
+                          })
+                        )
+                        .catch(() => toast({ title: "Room code", description: room.code ?? "" }));
+                    }}
+                  >
+                    <Copy className="w-3 h-3" /> {room.code}
+                  </button>
                 )}
                 {isVoice && (
                   <Badge variant="secondary" className="gap-1 shrink-0">
