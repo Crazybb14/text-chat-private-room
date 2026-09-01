@@ -80,6 +80,9 @@ import AdminFiles from "@/components/AdminFiles";
 import AdminNotifications from "@/components/AdminNotifications";
 import AdminManagers, { MakeAdminDialog } from "@/components/AdminManagers";
 import AdminAI from "@/components/AdminAI";
+import AdminModeration from "@/components/AdminModeration";
+import AdminWordList from "@/components/AdminWordList";
+import { formatDuration } from "@/lib/moderation";
 import {
   canDo,
   clearAdminSession,
@@ -101,6 +104,11 @@ interface BanRow {
   _row_id: number;
   username: string;
   room_id: number | null;
+  ban_duration?: number | null;
+  reason?: string | null;
+  tier?: number | null;
+  source?: string | null;
+  device_id?: string | null;
   [key: string]: unknown;
 }
 
@@ -240,6 +248,8 @@ const AdminPanel = () => {
   const [newRoomType, setNewRoomType] = useState("public");
   const [newRoomVoice, setNewRoomVoice] = useState(false);
   const [banInput, setBanInput] = useState("");
+  const [banDuration, setBanDuration] = useState("0");
+  const [banReason, setBanReason] = useState("");
   const [downtimeHours, setDowntimeHours] = useState("2");
   const [downtimeReason, setDowntimeReason] = useState("");
   const [ipFilter, setIpFilter] = useState("");
@@ -520,13 +530,24 @@ const AdminPanel = () => {
   const handleBanUser = async (usernameRaw: string) => {
     const username = usernameRaw.trim().toLowerCase();
     if (!username) return;
+    const minutes = Number(banDuration) || 0;
     await db.insert("bans", {
       username,
       device_id: null,
       room_id: null,
+      ban_duration: minutes > 0 ? minutes * 60 : 0,
+      reason:
+        banReason.trim() ||
+        (minutes > 0 ? `Banned by an admin for ${formatDuration(minutes)}` : "Banned by an admin"),
+      tier: null,
+      source: "admin",
     });
-    toast({ title: "Banned", description: `${username} is now banned from the site.` });
+    toast({
+      title: "Banned",
+      description: `@${username} is banned ${minutes > 0 ? `for ${formatDuration(minutes)}` : "permanently"}.`,
+    });
     setBanInput("");
+    setBanReason("");
     loadAll();
   };
 
@@ -884,6 +905,8 @@ const AdminPanel = () => {
             {can("admins") && <TabsTrigger value="admins">Admins</TabsTrigger>}
             {can("ips") && <TabsTrigger value="ips">IP Logs</TabsTrigger>}
             {can("people") && <TabsTrigger value="bans">Bans</TabsTrigger>}
+            {can("people") && <TabsTrigger value="moderation">Moderation</TabsTrigger>}
+            {can("people") && <TabsTrigger value="words">Bannable Words</TabsTrigger>}
             {can("people") && (
               <TabsTrigger value="reports">
                 Reports {pendingReports > 0 && <Badge className="ml-1 h-4 px-1.5">{pendingReports}</Badge>}
@@ -905,7 +928,7 @@ const AdminPanel = () => {
                 { label: "Rooms", value: rooms.length, icon: MessageSquare },
                 { label: "Accounts", value: profiles.length, icon: UserCog },
                 { label: "Messages (last 100)", value: messages.length, icon: MessageSquare },
-                { label: "Active bans", value: bans.length, icon: BanIcon },
+                { label: "Bans", value: bans.length, icon: BanIcon },
               ].map((stat) => (
                 <Card key={stat.label}>
                   <CardContent className="py-4 flex items-center gap-3">
@@ -1567,42 +1590,92 @@ const AdminPanel = () => {
                     <CardTitle className="text-base">Ban a user by username</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <Input
                         placeholder="username"
                         value={banInput}
                         onChange={(e) => setBanInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleBanUser(banInput)}
+                        className="flex-1 min-w-40"
                       />
+                      <Select value={banDuration} onValueChange={setBanDuration}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">Permanent</SelectItem>
+                          <SelectItem value="30">30 minutes</SelectItem>
+                          <SelectItem value="60">1 hour</SelectItem>
+                          <SelectItem value="360">6 hours</SelectItem>
+                          <SelectItem value="1440">1 day</SelectItem>
+                          <SelectItem value="10080">7 days</SelectItem>
+                          <SelectItem value="43200">30 days</SelectItem>
+                          <SelectItem value="86400">60 days</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <Button variant="destructive" onClick={() => handleBanUser(banInput)} disabled={!banInput.trim()}>
                         <BanIcon className="w-4 h-4 mr-2" /> Ban
                       </Button>
                     </div>
+                    <Input
+                      placeholder="Reason (optional — shown to the user)"
+                      value={banReason}
+                      onChange={(e) => setBanReason(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Bans are tied to the device too — a new account from the same device gets
+                      permanently banned for evasion automatically.
+                    </p>
                   </CardContent>
                 </Card>
                 <div className="space-y-2">
-                  {bans.map((ban) => (
-                    <Card key={ban._row_id}>
-                      <CardContent className="py-3 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold">@{ban.username}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Banned {fmtTime(Number(ban._created_at))}
-                            {ban.room_id !== null && typeof ban.room_id === "number"
-                              ? ` · Room #${ban.room_id}`
-                              : " · Site-wide"}
-                          </p>
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => handleUnban(ban.username)}>
-                          Unban
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  {bans.length === 0 && <p className="text-sm text-muted-foreground">No active bans.</p>}
+                  {bans.map((ban) => {
+                    const duration = Number(ban.ban_duration ?? 0);
+                    const permanent = duration <= 0;
+                    const untilMs = permanent ? null : (Number(ban._created_at) + duration) * 1000;
+                    const active = permanent || (untilMs ?? 0) > Date.now();
+                    return (
+                      <Card key={ban._row_id}>
+                        <CardContent className="py-3 flex items-center justify-between gap-3 flex-wrap">
+                          <div className="min-w-0">
+                            <p className="font-semibold flex items-center gap-2 flex-wrap">
+                              @{ban.username}
+                              <Badge variant={active ? "destructive" : "secondary"}>
+                                {active ? (permanent ? "permanent" : "active") : "expired"}
+                              </Badge>
+                              {ban.source === "auto" && <Badge variant="outline">auto</Badge>}
+                              {ban.tier != null && Number(ban.tier) > 0 && (
+                                <Badge variant="outline">tier {ban.tier}</Badge>
+                              )}
+                              {ban.device_id && <Badge variant="outline">device</Badge>}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Banned {fmtTime(Number(ban._created_at))}
+                              {!permanent && untilMs ? ` · lifts ${fmtTime(untilMs / 1000)}` : ""}
+                              {ban.reason ? ` · ${ban.reason}` : ""}
+                            </p>
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => handleUnban(ban.username)}>
+                            Unban
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                  {bans.length === 0 && <p className="text-sm text-muted-foreground">No bans yet.</p>}
                 </div>
               </>
             )}
+          </TabsContent>
+
+          {/* MODERATION */}
+          <TabsContent value="moderation" className="space-y-4 mt-4">
+            {withSignIn(<AdminModeration />)}
+          </TabsContent>
+
+          {/* BANNABLE WORDS */}
+          <TabsContent value="words" className="mt-4">
+            <AdminWordList />
           </TabsContent>
 
           {/* REPORTS */}

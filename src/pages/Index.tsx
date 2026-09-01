@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Ban as BanIcon,
   Clock,
   Lightbulb,
   Loader2,
@@ -49,6 +48,9 @@ import { splitLobbyRooms, type RoomKindRow } from "@/lib/roomTypes";
 import { getActiveCalls, getCallParticipants, participantPresent } from "@/lib/calls";
 import { useUserPrefs } from "@/lib/userSettings";
 import { functions } from "@/lib/shared/kliv-functions.js";
+import BanScreen from "@/components/BanScreen";
+import { checkBanStatus, type BanStatus } from "@/lib/moderation";
+import { allPermissions, getAdminSession, saveAdminSession } from "@/lib/adminAccounts";
 
 interface RoomRow extends RoomKindRow {
   code: string | null;
@@ -78,6 +80,7 @@ const Index = () => {
   const [voiceCallCounts, setVoiceCallCounts] = useState<Record<number, number>>({});
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [downtime, setDowntime] = useState<DowntimeInfo | null>(null);
+  const [banInfo, setBanInfo] = useState<BanStatus | null>(null);
 
   // One-time profile completion
   const [profileUsername, setProfileUsername] = useState("");
@@ -88,6 +91,16 @@ const Index = () => {
 
   // Personal preferences (online visibility is honored here)
   const { prefs } = useUserPrefs(username);
+
+  // Site accent color picked by the admin (Site → Accent color)
+  useEffect(() => {
+    const accent = settingText(settings, "theme_accent");
+    if (/^[a-z]{3,10}$/.test(accent)) {
+      document.documentElement.dataset.accent = accent;
+    } else {
+      delete document.documentElement.dataset.accent;
+    }
+  }, [settings]);
 
   // Keep this user's online status fresh everywhere, not just inside rooms
   usePresenceHeartbeat(prefs.show_online ? username : null);
@@ -172,14 +185,11 @@ const Index = () => {
         return;
       }
 
-      try {
-        const bans = await db.query("bans", { username: `eq.${currentSession.username}` });
-        if (bans.length > 0) {
-          setPhase("banned");
-          return;
-        }
-      } catch {
-        // ban check is best-effort
+      const banStatus = await checkBanStatus(currentSession.username, currentSession.email);
+      if (banStatus.banned) {
+        setBanInfo(banStatus);
+        setPhase("banned");
+        return;
       }
 
       setPhase("ready");
@@ -235,6 +245,25 @@ const Index = () => {
     } finally {
       setProfileBusy(false);
     }
+  };
+
+  const handleAdminClick = () => {
+    if (isOwner) {
+      saveAdminSession({ username: session?.email ?? "owner", permissions: allPermissions() });
+      localStorage.setItem("isAdmin", "true");
+      navigate("/admin/panel");
+      return;
+    }
+    const staffSession = getAdminSession();
+    if (staffSession) {
+      localStorage.setItem("isAdmin", "true");
+      navigate("/admin/panel");
+      return;
+    }
+    toast({
+      title: "You are not admin",
+      description: "Only the site owner and invited admins can open the admin panel.",
+    });
   };
 
   const handleSignOut = async () => {
@@ -332,19 +361,13 @@ const Index = () => {
 
   if (phase === "banned") {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
-        <div className="max-w-md text-center space-y-6">
-          <BanIcon className="w-16 h-16 text-red-500 mx-auto" />
-          <h1 className="text-3xl font-bold">You're banned</h1>
-          <p className="text-white/70">
-            Your account has been banned from {siteName}. If you believe this is a mistake, you can
-            submit an appeal.
-          </p>
-          <Button variant="destructive" onClick={() => navigate("/appeal")}>
-            Submit an appeal
-          </Button>
-        </div>
-      </div>
+      <BanScreen
+        reason={banInfo?.reason}
+        untilMs={banInfo?.untilMs}
+        permanent={banInfo?.permanent}
+        evasion={banInfo?.evasion}
+        siteName={siteName}
+      />
     );
   }
 
@@ -433,7 +456,7 @@ const Index = () => {
             <Button variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={() => navigate("/settings")}>
               <SettingsIcon className="w-5 h-5" />
             </Button>
-            <Button variant="ghost" size="icon" aria-label="Admin" title="Admin" onClick={() => navigate("/admin")}>
+            <Button variant="ghost" size="icon" aria-label="Admin" title="Admin" onClick={handleAdminClick}>
               <Shield className="w-5 h-5" />
             </Button>
             <Button variant="ghost" size="icon" aria-label="Sign out" title="Sign out" onClick={handleSignOut}>
@@ -455,8 +478,8 @@ const Index = () => {
 
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              Hey, <span className="text-primary">{username}</span>
+            <h1 className="text-4xl font-bold tracking-tight">
+              Hey, <span className="bg-gradient-to-r from-primary to-indigo-400 bg-clip-text text-transparent">{username}</span>
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
               {welcomeMessage || "Pick a room and start chatting."}

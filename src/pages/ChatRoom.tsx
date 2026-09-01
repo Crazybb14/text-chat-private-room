@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent 
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
-  Ban as BanIcon,
   Clock,
   Loader2,
   Lock,
@@ -58,6 +57,8 @@ import { useUserPrefs } from "@/lib/userSettings";
 import { playMessageChime } from "@/lib/sound";
 import { uploadRoomFile, validateChatFile } from "@/lib/chatFiles";
 import { notifyFriendsOfCall } from "@/lib/autoJoin";
+import BanScreen from "@/components/BanScreen";
+import { checkBanStatus, moderateMessage, type BanStatus } from "@/lib/moderation";
 
 interface RoomRow {
   _row_id: number;
@@ -97,12 +98,15 @@ const ChatRoom = () => {
   const [callCount, setCallCount] = useState(0);
   const [call, setCall] = useState<{ callId: number; label: string } | null>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
+  const [banInfo, setBanInfo] = useState<BanStatus | null>(null);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const messageCountRef = useRef(0);
   const typingRowRef = useRef<number | null>(null);
   const typingSentAtRef = useRef(0);
   const lastSentAtRef = useRef(0);
+  const lastSentTextRef = useRef("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const maxMessageLength = Math.max(50, settingNumber(settings, "max_message_length") || 2000);
@@ -238,10 +242,12 @@ const ChatRoom = () => {
           return;
         }
         setUsername(currentSession.username);
+        setSessionEmail(currentSession.email ?? null);
         setIsOwner(isOwnerSession(currentSession));
 
-        const bans = await db.query("bans", { username: `eq.${currentSession.username}` });
-        if (bans.length > 0) {
+        const banStatus = await checkBanStatus(currentSession.username, currentSession.email);
+        if (banStatus.banned) {
+          setBanInfo(banStatus);
           setPhase("banned");
           return;
         }
@@ -370,6 +376,78 @@ const ChatRoom = () => {
       return;
     }
 
+    // Local rule checks from the admin's site settings
+    const capsLimit = settingNumber(settings, "caps_ratio_percent");
+    const letters = content.replace(/[^a-zA-Z]/g, "");
+    if (capsLimit > 0 && letters.length >= 10) {
+      const capsRatio = (letters.replace(/[^A-Z]/g, "").length / letters.length) * 100;
+      if (capsRatio > capsLimit) {
+        toast({
+          title: "Too much shouting",
+          description: `Keep it under ${capsLimit}% capital letters.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    const emojiLimit = settingNumber(settings, "max_emoji_per_message");
+    if (emojiLimit > 0) {
+      const emojiCount = (content.match(/\p{Extended_Pictographic}/gu) ?? []).length;
+      if (emojiCount > emojiLimit) {
+        toast({
+          title: "That's a lot of emoji",
+          description: `Max ${emojiLimit} per message.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    if (settingBool(settings, "block_links") && /\b(?:https?:\/\/|www\.)\S+/i.test(content)) {
+      toast({
+        title: "Links are turned off",
+        description: "Posting links isn't allowed here.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (settingBool(settings, "block_duplicate_messages") && content === lastSentTextRef.current) {
+      toast({
+        title: "You already sent that",
+        description: "Try saying something new.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Server-side moderation: severity tiers, escalating bans, device bans
+    const verdict = await moderateMessage({
+      username,
+      email: sessionEmail,
+      roomId: Number(roomId),
+      text: content,
+    });
+    if (verdict.action === "banned") {
+      setBanInfo({
+        banned: true,
+        permanent: verdict.permanent === true,
+        untilMs: verdict.untilMs ?? null,
+        reason: verdict.reason ?? null,
+        evasion: false,
+      });
+      setPhase("banned");
+      return;
+    }
+    if (verdict.action === "warned") {
+      toast({
+        title: "Watch your language",
+        description: verdict.message ?? "That word isn't allowed.",
+        variant: "destructive",
+      });
+      setInput("");
+      syncTyping("", true);
+      return;
+    }
+
     setSending(true);
     try {
       await db.insert("messages", {
@@ -380,6 +458,7 @@ const ChatRoom = () => {
         is_ai: 0,
       });
       lastSentAtRef.current = Date.now();
+      lastSentTextRef.current = content;
       rateLimiter.record();
       setInput("");
       syncTyping("", true);
@@ -450,16 +529,12 @@ const ChatRoom = () => {
 
   if (phase === "banned") {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
-        <div className="max-w-md text-center space-y-6">
-          <BanIcon className="w-16 h-16 text-red-500 mx-auto" />
-          <h1 className="text-3xl font-bold">You're banned</h1>
-          <p className="text-white/70">Your account has been banned from this site.</p>
-          <Button variant="destructive" onClick={() => navigate("/appeal")}>
-            Submit an appeal
-          </Button>
-        </div>
-      </div>
+      <BanScreen
+        reason={banInfo?.reason}
+        untilMs={banInfo?.untilMs}
+        permanent={banInfo?.permanent}
+        evasion={banInfo?.evasion}
+      />
     );
   }
 

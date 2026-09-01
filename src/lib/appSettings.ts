@@ -193,11 +193,12 @@ export const SETTING_DEFS: SettingDef[] = [
   },
   {
     key: "auto_ban_enabled",
-    label: "Auto-ban on profanity",
+    label: "Auto-ban on banned words",
     group: "Moderation",
     type: "toggle",
-    default: false,
-    description: "Automatically ban users who send banned words. Use with care.",
+    default: true,
+    description:
+      "Checks every room message against the bannable-word list and bans by severity (see the Bannable Words tab).",
   },
   {
     key: "guest_access_enabled",
@@ -283,66 +284,116 @@ export const SETTING_DEFS: SettingDef[] = [
     default: false,
     description: "Allow users to share files in public rooms. Off by default.",
   },
+  {
+    key: "caps_ratio_percent",
+    label: "Max capital letters (%)",
+    group: "Chat & messages",
+    type: "number",
+    default: 0,
+    min: 0,
+    max: 100,
+    description: "Block shouting messages that are mostly CAPS (0 = off, e.g. 80).",
+  },
+  {
+    key: "max_emoji_per_message",
+    label: "Max emoji per message",
+    group: "Chat & messages",
+    type: "number",
+    default: 0,
+    min: 0,
+    max: 100,
+    description: "Blocks emoji spam in one message. 0 = no limit.",
+  },
+  {
+    key: "block_links",
+    label: "Block links in rooms",
+    group: "Chat & messages",
+    type: "toggle",
+    default: false,
+    description: "Stops people from posting URLs in chat rooms.",
+  },
+  {
+    key: "block_duplicate_messages",
+    label: "Block repeat messages",
+    group: "Chat & messages",
+    type: "toggle",
+    default: true,
+    description: "Sending the exact same message twice in a row is stopped.",
+  },
+  {
+    key: "penalty_multiplier",
+    label: "Escalation speed (1–3×)",
+    group: "Moderation",
+    type: "number",
+    default: 1,
+    min: 1,
+    max: 3,
+    description: "How fast repeat offenses climb the ban ladder. 3× punishes hard.",
+  },
+  {
+    key: "violation_history_days",
+    label: "Violation memory (days)",
+    group: "Moderation",
+    type: "number",
+    default: 90,
+    min: 1,
+    max: 365,
+    description: "How long past violations count toward longer bans.",
+  },
+  {
+    key: "mod_warn_first_offense",
+    label: "Warn before first ban",
+    group: "Moderation",
+    type: "toggle",
+    default: true,
+    description: "Mild language (tier 1) gets a warning first instead of an instant ban.",
+  },
+  {
+    key: "device_bans_enabled",
+    label: "Ban by device",
+    group: "Moderation",
+    type: "toggle",
+    default: true,
+    description:
+      "Bans follow the device cookie, so new accounts made on a banned device stay banned.",
+  },
+  {
+    key: "evasion_permaban_enabled",
+    label: "Ban evasion = permanent",
+    group: "Moderation",
+    type: "toggle",
+    default: true,
+    description: "Anyone caught using a new account to dodge a ban is permanently banned.",
+  },
+  {
+    key: "notify_user_on_violation",
+    label: "Notify users of violations",
+    group: "Moderation",
+    type: "toggle",
+    default: true,
+    description: "Sends the user a notification when they are warned or banned.",
+  },
+  {
+    key: "ban_appeals_enabled",
+    label: "Allow ban appeals",
+    group: "Moderation",
+    type: "toggle",
+    default: true,
+    description: "Shows the appeal form to banned users.",
+  },
+  {
+    key: "theme_accent",
+    label: "Accent color",
+    group: "Site",
+    type: "text",
+    default: "violet",
+    description: "Site accent color: violet, blue, emerald, rose, or amber.",
+  },
 ];
 
-/** Real bad-word list for the auto-ban filter. Only actual profanity, hate speech, and explicit slurs — no single-letter false positives. */
-export const AUTO_BAN_WORDS = [
-  // Extreme profanity
-  "fuck", "fucking", "fucked", "fucker", "fuckface", "fuckwit", "fuckhead", "fucktard",
-  "shit", "shitty", "shittier", "shittest", "shithead", "shitface", "shitstain",
-  "cunt", "cunts", "cunting", "cuntface", "cuntlick", "cuntlapper",
-  "bastard", "bastards", "sonofabitch", "son of a bitch",
-  "bitch", "bitches", "bitching", "bitchy",
-  "whore", "whores", "whoring", "whorebag",
-  "slut", "sluts", "slutty", "slutbag",
-  "dick", "dicks", "dickhead", "dickface", "dickwad", "dickless",
-  "pussy", "pussies", "pussy whipped",
-  "cock", "cocks", "cockhead", "cockface",
-  "twat", "twats", "twatface", "twatwaffle",
-  "ass", "asses", "asshole", "assholes", "asswipe", "assface",
-  "piss", "pissed", "piss off",
-  // Hate speech and slurs
-  "nigger", "niggers", "nigga", "niggaz",
-  "chink", "chinks", "chinky",
-  "spic", "spics", "spiccy",
-  "kike", "kikes", "kikeface",
-  "fag", "faggot", "faggots", "faggy",
-  "dyke", "dykes", "dykey",
-  "tranny", "trannies", "trannyfucker",
-  "retard", "retards", "retarded", "retardface",
-  "mongoloid", "mongoloids",
-  // Sexual violence and explicit terms
-  "rape", "rapes", "raping", "rapist", "rapists",
-  "molest", "molester", "molesters", "molesting",
-  "pedophile", "pedophilia", "pedophiles",
-  // Drugs (slang)
-  "heroin", "meth", "crack", "cocaine",
-  // Violent extremism and terrorist terms
-  "isis", "al qaeda",
-];
-
-/** Bypass variants: spaced letters, letter swaps, repeats, and common obfuscations. */
-export const AUTO_BAN_VARIANTS = [
-  // Spaced versions
-  "f u c k", "s h i t", "c u n t", "n i g g e r", "n i g g a",
-  "f a g", "f a g g o t", "r e t a r d", "r a p e",
-  "k i k e", "s p i c", "c h i n k", "d y k e", "t w a t",
-  // Letter swaps (ph → f, x → ks, s → z, etc.)
-  "phuck", "fuk", "fukking", "sh1t", "shi1t", "fvck", "fck",
-  "kike", "k1ke", "fag", "f4g", "fagg0t", "n1gger", "n1gga",
-  "retard", "r3tard", "ret4rd", "chink", "ch1nk", "spic", "sp1c",
-  "twat", "tw4t", "cunt", "kun7", "kun7t", "wh0re", "wh4r",
-  // Repeat letters to bypass filters
-  "fuuck", "fuuuck", "shiit", "shiiit", "ccunt", "ccuunt",
-  "nigger", "niigger", "niggger", "niiigger", "faag", "fagg",
-  // Common internet slang obfuscations
-  "f4gg0t", "n1gger", "nigg4h", "r3t4rd", "ch1nk", "5pic",
-  "fvck", "phuk", "fukc", "sheit", "kunt", "kun7",
-  "d1ck", "d1ckhead", "p0rn",
-];
-
-/** Combined list for the auto-ban filter. Both clean words and bypass variants. */
-export const AUTO_BAN_LIST = [...new Set([...AUTO_BAN_WORDS, ...AUTO_BAN_VARIANTS])];
+// The bannable-word list now lives in @/lib/moderation (tiered, with
+// automatic bypass-variant matching). The two settings below are a separate,
+// optional censor list that just masks words in place.
 
 export type AppSettings = Record<string, SettingValue>;
 

@@ -110,3 +110,20 @@ html {
     height: 0;
   }
 }
+
+/* Accent color presets (admin setting: Site -> Accent color) */
+[data-accent="blue"] .bg-primary { background-color: hsl(217 91% 60%); }
+[data-accent="blue"] .text-primary { color: hsl(217 91% 60%); }
+[data-accent="blue"] .border-primary { border-color: hsl(217 91% 60%); }
+[data-accent="emerald"] .bg-primary { background-color: hsl(160 84% 39%); }
+[data-accent="emerald"] .text-primary { color: hsl(160 84% 39%); }
+[data-accent="emerald"] .border-primary { border-color: hsl(160 84% 39%); }
+[data-accent="rose"] .bg-primary { background-color: hsl(350 89% 60%); }
+[data-accent="rose"] .text-primary { color: hsl(350 89% 60%); }
+[data-accent="rose"] .border-primary { border-color: hsl(350 89% 60%); }
+[data-accent="amber"] .bg-primary { background-color: hsl(38 92% 50%); }
+[data-accent="amber"] .text-primary { color: hsl(38 92% 50%); }
+[data-accent="amber"] .border-primary { border-color: hsl(38 92% 50%); }
+
+::selection { background: hsl(263 70% 50% / 0.35); }
+html { scroll-behavior: smooth; }
