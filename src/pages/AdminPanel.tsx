@@ -93,6 +93,7 @@ interface RoomRow {
   name: string;
   code: string | null;
   type: string;
+  is_voice?: number | null;
   [key: string]: unknown;
 }
 
@@ -237,6 +238,7 @@ const AdminPanel = () => {
 
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomType, setNewRoomType] = useState("public");
+  const [newRoomVoice, setNewRoomVoice] = useState(false);
   const [banInput, setBanInput] = useState("");
   const [downtimeHours, setDowntimeHours] = useState("2");
   const [downtimeReason, setDowntimeReason] = useState("");
@@ -480,13 +482,14 @@ const AdminPanel = () => {
     if (!name) return;
     const type = newRoomType === "private" ? "private" : "public";
     const code = type === "private" ? generateRoomCode() : null;
-    await db.insert("rooms", { name, code, type });
+    await db.insert("rooms", { name, code, type, is_voice: newRoomVoice ? 1 : 0 });
     toast({
-      title: "Room created",
+      title: newRoomVoice ? "Voice room created" : "Room created",
       description: type === "private" ? `Private room code: ${code}` : undefined,
     });
     setNewRoomName("");
     setNewRoomType("public");
+    setNewRoomVoice(false);
     loadAll();
   };
 
@@ -993,6 +996,10 @@ const AdminPanel = () => {
                         <Plus className="w-4 h-4 mr-2" /> Create
                       </Button>
                     </div>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none w-fit">
+                      <Switch checked={newRoomVoice} onCheckedChange={setNewRoomVoice} />
+                      Voice room — shows in the “Voice rooms” list and anyone can start the call
+                    </label>
                   </CardContent>
                 </Card>
                 <div className="space-y-2">
@@ -1007,7 +1014,8 @@ const AdminPanel = () => {
                             <p className="font-semibold truncate">{room.name}</p>
                             <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                               <span>
-                                {room.type === "private" ? "Private" : "Public"} · Room #{room._row_id}
+                                {room.type === "private" ? "Private" : "Public"}
+                                {Number(room.is_voice) === 1 ? " voice room" : ""} · Room #{room._row_id}
                               </span>
                               {inRoom > 0 && (
                                 <span className="inline-flex items-center gap-1 text-emerald-500">

@@ -1,15 +1,14 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, Eye, EyeOff, Loader2, ArrowRight, KeyRound } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, KeyRound, Loader2, LogIn, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import auth from "@/lib/shared/kliv-auth.js";
-import UserManager from "@/lib/userManagement";
 import { functions } from "@/lib/shared/kliv-functions.js";
+import UserManager, { type SessionInfo } from "@/lib/userManagement";
 import { allPermissions, parsePermissions, saveAdminSession } from "@/lib/adminAccounts";
 
 type StaffLoginResult = {
@@ -19,11 +18,18 @@ type StaffLoginResult = {
   permissions?: Record<string, boolean>;
 };
 
+/**
+ * Admin sign-in. Owner power is locked to the site owner's own account —
+ * there is no password that can unlock the owner panel by itself. Staff
+ * admins sign in with the accounts the owner invited.
+ */
 const AdminLogin = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [mode, setMode] = useState<"staff" | "owner">("staff");
   const [loading, setLoading] = useState(false);
+  const [sessionChecking, setSessionChecking] = useState(true);
+  const [session, setSession] = useState<SessionInfo | null>(null);
 
   // Admin sign-in (staff accounts the owner invited)
   const [staffName, setStaffName] = useState("");
@@ -34,10 +40,26 @@ const AdminLogin = () => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // Owner sign-in
-  const [ownerEmail, setOwnerEmail] = useState("");
-  const [ownerPassword, setOwnerPassword] = useState("");
-  const [showOwnerPassword, setShowOwnerPassword] = useState(false);
+  // Who is currently signed in. Owner access comes from the platform's own
+  // flag on that account — a password entered here never grants it.
+  useEffect(() => {
+    let alive = true;
+    UserManager.getSession()
+      .then((s) => {
+        if (alive) setSession(s);
+      })
+      .catch(() => {
+        if (alive) setSession(null);
+      })
+      .finally(() => {
+        if (alive) setSessionChecking(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const ownerSignedIn = session?.isPrimaryTeam === true;
 
   const enterPanel = (username: string, permissions: Record<string, boolean>) => {
     saveAdminSession({ username, permissions });
@@ -124,31 +146,11 @@ const AdminLogin = () => {
     }
   };
 
-  const handleOwnerSignIn = async (e: FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const result = (await auth.signIn(ownerEmail, ownerPassword)) as {
-        status?: string;
-      };
-      if (result.status === "authenticated") {
-        const newSession = await UserManager.getSession();
-        if (newSession?.isPrimaryTeam) {
-          await UserManager.recordLoginPassword(ownerEmail, ownerPassword);
-          enterPanel(ownerEmail, allPermissions());
-        } else {
-          toast({ title: "Not the owner", description: "Only the site owner can use this path.", variant: "destructive" });
-        }
-      } else if (result.status === "totp_required") {
-        toast({ title: "2FA required", description: "Complete your authenticator app sign-in.", variant: "destructive" });
-      } else {
-        toast({ title: "Sign-in failed", description: "Check your owner credentials.", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
+  /** Owner enter: no password — the signed-in owner account IS the proof. */
+  const handleOwnerEnter = () => {
+    saveAdminSession({ username: session?.email ?? "owner", permissions: allPermissions() });
+    localStorage.setItem("isAdmin", "true");
+    navigate("/admin/panel", { replace: true });
   };
 
   return (
@@ -164,6 +166,13 @@ const AdminLogin = () => {
               <Shield className="w-12 h-12 text-primary mx-auto mb-3" />
               <h1 className="text-2xl font-bold mb-1">Admin Panel</h1>
               <p className="text-sm text-muted-foreground">Choose your sign-in path</p>
+            </div>
+
+            <div className="text-xs text-center pl-3 pr-3 pb-3 mb-4 border rounded-lg bg-primary/5">
+              <p className="text-muted-foreground">
+                Owner access is locked to the site owner's own account — no password
+                entered here can unlock owner settings.
+              </p>
             </div>
 
             <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)} className="w-full">
@@ -268,48 +277,41 @@ const AdminLogin = () => {
               </TabsContent>
 
               <TabsContent value="owner" className="mt-4">
-                <form onSubmit={handleOwnerSignIn} className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Sign in with the site owner's credentials for full admin power.
+                {sessionChecking ? (
+                  <p className="text-sm text-muted-foreground flex items-center justify-center gap-2 py-6">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Checking your account…
                   </p>
-                  <div>
-                    <Label htmlFor="owner-email">Owner email</Label>
-                    <Input
-                      id="owner-email"
-                      type="email"
-                      placeholder="name@example.com"
-                      value={ownerEmail}
-                      onChange={(e) => setOwnerEmail(e.target.value)}
-                      required
-                      className="bg-secondary/50"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="owner-password">Password</Label>
-                    <div className="relative">
-                      <Input
-                        id="owner-password"
-                        type={showOwnerPassword ? "text" : "password"}
-                        placeholder="Owner password"
-                        value={ownerPassword}
-                        onChange={(e) => setOwnerPassword(e.target.value)}
-                        required
-                        className="bg-secondary/50 pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowOwnerPassword(!showOwnerPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      >
-                        {showOwnerPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
-                    {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRight className="w-4 h-4 mr-2" />}
-                    {loading ? "Signing in..." : "Owner sign-in"}
-                  </Button>
-                </form>
+                ) : ownerSignedIn ? (
+                  <Card className="border-emerald-500/30 bg-emerald-500/5">
+                    <CardContent className="py-5 space-y-3">
+                      <p className="text-sm font-semibold flex items-center justify-center gap-2">
+                        <Shield className="w-4 h-4 text-emerald-500" />
+                        Signed in as the site owner
+                      </p>
+                      <p className="text-xs text-muted-foreground text-center">
+                        {session?.email} — you're signed in with the owner's own account, so no
+                        password is needed.
+                      </p>
+                      <Button className="w-full bg-primary hover:bg-primary/90" onClick={handleOwnerEnter}>
+                        <ArrowRight className="w-4 h-4 mr-2" /> Continue as the owner
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="py-5 space-y-3 text-center">
+                      <p className="text-sm font-semibold">Owner access needs the owner's account</p>
+                      <p className="text-xs text-muted-foreground">
+                        The owner tab only unlocks for the site owner's own login. Sign in with it —
+                        for example by switching accounts on the main site — and come back. No
+                        password typed here can change owner-only settings.
+                      </p>
+                      <Button variant="outline" className="w-full" onClick={() => navigate("/login")}>
+                        <LogIn className="w-4 h-4 mr-2" /> Sign in with the owner account
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
             </Tabs>
           </CardContent>

@@ -10,7 +10,9 @@ import {
   LogOut,
   Megaphone,
   MessageSquare,
+  Phone,
   Plus,
+  Radio,
   Search,
   Settings as SettingsIcon,
   Shield,
@@ -23,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import UserManager, { type SessionInfo } from "@/lib/userManagement";
@@ -42,12 +45,12 @@ import {
   type PresenceRow,
 } from "@/lib/presence";
 import { isOwnerSession } from "@/lib/owner";
+import { splitLobbyRooms, type RoomKindRow } from "@/lib/roomTypes";
+import { getActiveCalls, getCallParticipants, participantPresent } from "@/lib/calls";
 import { useUserPrefs } from "@/lib/userSettings";
 import { functions } from "@/lib/shared/kliv-functions.js";
 
-interface RoomRow {
-  _row_id: number;
-  name: string;
+interface RoomRow extends RoomKindRow {
   code: string | null;
   type: string;
   [key: string]: unknown;
@@ -70,7 +73,9 @@ const Index = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomType, setNewRoomType] = useState("public");
+  const [newRoomVoice, setNewRoomVoice] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [voiceCallCounts, setVoiceCallCounts] = useState<Record<number, number>>({});
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [downtime, setDowntime] = useState<DowntimeInfo | null>(null);
 
@@ -104,6 +109,35 @@ const Index = () => {
       ]);
       setRooms(roomRows);
       setPresence(presenceRows);
+
+      // Live head-count for voice rooms: how many people are in each call.
+      const publicVoiceIds = roomRows
+        .filter((r) => r.type !== "private" && Number(r.is_voice) === 1)
+        .map((r) => r._row_id);
+      // Remember which rooms are voice rooms so room pages can trust it even
+      // if a single-row lookup drops the flag.
+      try {
+        sessionStorage.setItem("voice_room_ids", JSON.stringify(publicVoiceIds));
+      } catch {
+        // storage unavailable — the room lookup still works
+      }
+      if (publicVoiceIds.length > 0) {
+        const activeCalls = await getActiveCalls();
+        const counts: Record<number, number> = {};
+        await Promise.all(
+          activeCalls
+            .filter((c) => c.room_id !== null && publicVoiceIds.includes(Number(c.room_id)))
+            .map(async (c) => {
+              const parts = await getCallParticipants(c._row_id);
+              const present = parts.filter((p) => participantPresent(p)).length;
+              const rid = Number(c.room_id);
+              counts[rid] = Math.max(counts[rid] ?? 0, present);
+            })
+        );
+        setVoiceCallCounts(counts);
+      } else {
+        setVoiceCallCounts({});
+      }
     } catch (error) {
       console.error("Failed to load rooms:", error);
     }
@@ -231,6 +265,7 @@ const Index = () => {
 
   const openCreate = () => {
     setNewRoomType(isOwner ? "public" : "private");
+    setNewRoomVoice(false);
     setCreateOpen(true);
   };
 
@@ -254,8 +289,9 @@ const Index = () => {
         roomId?: number;
         code?: string | null;
         type?: string;
+        voice?: boolean;
         error?: string;
-      }>("create-room", { name, type: wantsPublic ? "public" : "private", username });
+      }>("create-room", { name, type: wantsPublic ? "public" : "private", username, voice: newRoomVoice });
       if (!result?.ok || !result.roomId) {
         toast({
           title: "Couldn't create room",
@@ -266,12 +302,13 @@ const Index = () => {
       }
       const type = result.type === "public" ? "public" : "private";
       toast({
-        title: "Room created",
+        title: newRoomVoice ? "Voice room created" : "Room created",
         description:
           type === "private" ? `Share this code to let people in: ${result.code}` : undefined,
       });
       setCreateOpen(false);
       setNewRoomName("");
+      setNewRoomVoice(false);
       setNewRoomType(isOwner ? "public" : "private");
       if (type === "private") {
         sessionStorage.setItem(`room_unlocked_${result.roomId}`, "1");
@@ -356,8 +393,7 @@ const Index = () => {
   }
 
   const now = Date.now();
-  const publicRooms = rooms.filter((r) => r.type !== "private");
-  const privateRooms = rooms.filter((r) => r.type === "private");
+  const { textPublic: publicRooms, voicePublic: voiceRooms, privateRooms } = splitLobbyRooms(rooms);
   const onlineCount = new Set(
     presence.filter((p) => isPresenceOnline(p, now)).map((p) => p.username)
   ).size;
@@ -436,6 +472,9 @@ const Index = () => {
                 {publicRooms.length} public room{publicRooms.length === 1 ? "" : "s"}
               </span>
               <span className="text-xs px-2.5 py-1 rounded-full bg-secondary/70">
+                {voiceRooms.length} voice room{voiceRooms.length === 1 ? "" : "s"}
+              </span>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-secondary/70">
                 {privateRooms.length} private room{privateRooms.length === 1 ? "" : "s"}
               </span>
               {showOnline && (
@@ -470,14 +509,19 @@ const Index = () => {
               </div>
             )}
           </div>
-          {visiblePublicRooms.length === 0 && (
+          {visiblePublicRooms.length === 0 && publicRooms.length > 0 && (
             <Card>
               <CardContent className="py-10 text-center text-muted-foreground text-sm">
-                {publicRooms.length === 0
-                  ? isOwner && allowRoomCreation
-                    ? "No public rooms yet — create the first one!"
-                    : "No public rooms yet — the site owner creates public rooms."
-                  : "No rooms match that search."}
+                No rooms match that search.
+              </CardContent>
+            </Card>
+          )}
+          {publicRooms.length === 0 && (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground text-sm">
+                {isOwner && allowRoomCreation
+                  ? "No public rooms yet — create the first one!"
+                  : "No public rooms yet — the site owner creates public rooms."}
               </CardContent>
             </Card>
           )}
@@ -519,6 +563,73 @@ const Index = () => {
               );
             })}
           </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase text-muted-foreground flex items-center gap-2">
+              <Radio className="w-4 h-4" /> Voice rooms
+            </h2>
+          </div>
+          {(voiceRooms.length > 0 || (isOwner && allowRoomCreation)) && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {voiceRooms.map((room) => {
+                const inCall = voiceCallCounts[room._row_id] ?? 0;
+                let hue = 140;
+                for (let i = 0; i < room.name.length; i++) hue = (hue * 31 + room.name.charCodeAt(i)) % 360;
+                return (
+                  <Card
+                    key={room._row_id}
+                    className="cursor-pointer hover:border-primary/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/10 transition-all group"
+                    onClick={() => navigate(`/chat/${room._row_id}`, { state: { voice: true } })}
+                  >
+                    <CardContent className="flex items-center gap-3 py-4">
+                      <div
+                        className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 text-white"
+                        style={{
+                          background: `linear-gradient(135deg, hsl(${hue} 60% 42%), hsl(${(hue + 45) % 360} 60% 34%))`,
+                        }}
+                      >
+                        <Radio className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold truncate">{room.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {inCall > 0 ? (
+                            <span className="text-emerald-500 inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              {inCall} in the call
+                            </span>
+                          ) : (
+                            "Voice room — join to talk"
+                          )}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/chat/${room._row_id}`, { state: { voice: true } });
+                        }}
+                      >
+                        <Phone className="w-3.5 h-3.5" /> Join
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {voiceRooms.length === 0 && isOwner && allowRoomCreation && (
+                <Card className="border-dashed">
+                  <CardContent className="py-8 text-center text-muted-foreground text-sm">
+                    No voice rooms yet — hit “New room” and tick “Voice room” to make a public
+                    call room that shows up right here.
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
         </section>
 
         {allowPrivateRooms && (
@@ -639,6 +750,21 @@ const Index = () => {
                   room.
                 </p>
               ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="room-voice" className="flex items-center gap-2.5 font-normal cursor-pointer">
+                <Checkbox
+                  id="room-voice"
+                  checked={newRoomVoice}
+                  onCheckedChange={(checked) => setNewRoomVoice(checked === true)}
+                />
+                Make this a voice room
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Voice rooms are call-first rooms — they get their own “Voice rooms” list on the main
+                page instead of mixing into the text rooms, and anyone in them can start or join
+                the call.
+              </p>
             </div>
           </div>
           <DialogFooter>

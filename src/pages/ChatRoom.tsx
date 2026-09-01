@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Ban as BanIcon,
@@ -7,7 +7,10 @@ import {
   Loader2,
   Lock,
   Megaphone,
+  Mic,
   Paperclip,
+  Phone,
+  Radio,
   Send,
   Users,
   Video as VideoIcon,
@@ -50,6 +53,7 @@ import {
   type CallSessionRow,
 } from "@/lib/calls";
 import { isOwnerSession } from "@/lib/owner";
+import { isVoiceRoom } from "@/lib/roomTypes";
 import { useUserPrefs } from "@/lib/userSettings";
 import { playMessageChime } from "@/lib/sound";
 import { uploadRoomFile, validateChatFile } from "@/lib/chatFiles";
@@ -60,6 +64,7 @@ interface RoomRow {
   name: string;
   code: string | null;
   type: string;
+  is_voice?: number | null;
   [key: string]: unknown;
 }
 
@@ -70,6 +75,7 @@ const TYPING_WINDOW_MS = 8 * 1000;
 const ChatRoom = () => {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
+  const navVoice = (useLocation().state as { voice?: boolean } | null)?.voice === true;
   const { toast } = useToast();
   const { settings } = useAppSettings();
 
@@ -88,6 +94,7 @@ const ChatRoom = () => {
   const [tick, setTick] = useState(0);
   const [isOwner, setIsOwner] = useState(false);
   const [activeCall, setActiveCall] = useState<CallSessionRow | null>(null);
+  const [callCount, setCallCount] = useState(0);
   const [call, setCall] = useState<{ callId: number; label: string } | null>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
 
@@ -239,7 +246,8 @@ const ChatRoom = () => {
           return;
         }
 
-        const found = await db.get<RoomRow>("rooms", roomId);
+        const roomRows = await db.query<RoomRow>("rooms", { order: "_row_id.asc" });
+        const found = roomRows.find((r) => String(r._row_id) === String(roomId)) ?? null;
         if (!found) {
           setPhase("notfound");
           return;
@@ -304,7 +312,9 @@ const ChatRoom = () => {
           return;
         }
         const parts = await getCallParticipants(found._row_id);
-        setActiveCall(parts.some((p) => participantPresent(p)) ? found : null);
+        const present = parts.filter((p) => participantPresent(p));
+        setActiveCall(present.length > 0 ? found : null);
+        setCallCount(present.length);
       } catch {
         // best-effort
       }
@@ -504,6 +514,20 @@ const ChatRoom = () => {
 
   const slowLeft = slowModeRemaining(lastSentAtRef.current, slowModeSeconds);
   const charsLeft = maxMessageLength - input.length;
+  // Voice rooms are call-first. The flag comes from the room row, but the
+  // lobby also passes it through navigation (and remembers it) so a lookup
+  // that drops the column still renders the room correctly.
+  const knownVoiceIds = (() => {
+    try {
+      return JSON.parse(sessionStorage.getItem("voice_room_ids") ?? "[]") as number[];
+    } catch {
+      return [];
+    }
+  })();
+  const isVoice =
+    isVoiceRoom(room) ||
+    navVoice ||
+    (room !== null && knownVoiceIds.includes(Number(room._row_id)));
   let roomHue = 0;
   for (let i = 0; i < room.name.length; i++) roomHue = (roomHue * 31 + room.name.charCodeAt(i)) % 360;
 
@@ -521,7 +545,7 @@ const ChatRoom = () => {
                 background: `linear-gradient(135deg, hsl(${roomHue} 60% 42%), hsl(${(roomHue + 45) % 360} 60% 34%))`,
               }}
             >
-              {room.name.charAt(0).toUpperCase()}
+              {isVoice ? <Radio className="w-5 h-5" /> : room.name.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -529,6 +553,11 @@ const ChatRoom = () => {
                 {room.type === "private" && (
                   <Badge variant="secondary" className="gap-1 shrink-0">
                     <Lock className="w-3 h-3" /> Private
+                  </Badge>
+                )}
+                {isVoice && (
+                  <Badge variant="secondary" className="gap-1 shrink-0">
+                    <Radio className="w-3 h-3" /> Voice
                   </Badge>
                 )}
               </div>
@@ -551,7 +580,7 @@ const ChatRoom = () => {
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {(room.type === "private" || isOwner || activeCall) && (
+            {(room.type === "private" || isOwner || activeCall || isVoice) && (
               <Button
                 size="sm"
                 variant={activeCall ? "default" : "outline"}
@@ -559,7 +588,9 @@ const ChatRoom = () => {
                 onClick={activeCall ? handleJoinCall : () => void handleStartCall()}
               >
                 <VideoIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">{activeCall ? "Join call" : "Start call"}</span>
+                <span className="hidden sm:inline">
+                  {activeCall ? `Join call (${callCount})` : isVoice ? "Join voice" : "Start call"}
+                </span>
               </Button>
             )}
             <NotificationBell username={username || ""} />
@@ -581,6 +612,32 @@ const ChatRoom = () => {
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
         <div className="max-w-4xl mx-auto px-4 py-4">
+          {isVoice && !call && (
+            <Card className="mb-4 border-emerald-500/30 bg-emerald-500/5">
+              <CardContent className="py-5 flex flex-col sm:flex-row items-center gap-4 justify-between">
+                <div className="flex items-center gap-3 text-center sm:text-left">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 flex items-center justify-center shrink-0">
+                    <Mic className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">This is a voice room</p>
+                    <p className="text-xs text-muted-foreground">
+                      {activeCall
+                        ? `${callCount} in the call right now — jump in and talk.`
+                        : "Nobody is talking yet — start the call and say hi. Text chat works here too."}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-700 shrink-0"
+                  onClick={activeCall ? handleJoinCall : () => void handleStartCall()}
+                >
+                  <Phone className="w-4 h-4" />
+                  {activeCall ? `Join the call (${callCount})` : "Start the call"}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
           {messages.length === 0 && (
             <div className="text-center py-16 text-muted-foreground text-sm">
               <Users className="w-10 h-10 mx-auto mb-3 opacity-50" />
