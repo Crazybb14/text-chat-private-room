@@ -1,23 +1,63 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Lightbulb, ArrowLeft, Send, User as UserIcon } from "lucide-react";
+import { ArrowLeft, Lightbulb, MessageSquareReply, Send, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
 import { getDeviceId } from "@/lib/deviceId";
 import UserManager from "@/lib/userManagement";
+
+interface SuggestionRow {
+  _row_id: number;
+  content: string;
+  username: string;
+  status: string;
+  admin_reply: string | null;
+  replied_at: number | null;
+  replied_by: string | null;
+  _created_at: number;
+  [key: string]: unknown;
+}
+
+const fmtTime = (value: number) =>
+  value
+    ? new Date(value * (value > 1e11 ? 1 : 1000)).toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "";
 
 const Suggestions = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [suggestion, setSuggestion] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mine, setMine] = useState<SuggestionRow[]>([]);
   const [session, setSession] = useState<Awaited<ReturnType<typeof UserManager.getSession>> | null>(null);
 
+  const loadMine = async (username: string) => {
+    try {
+      const rows = await db.query<SuggestionRow>("suggestions", {
+        username: `eq.${username}`,
+        order: "_row_id.desc",
+        limit: "50",
+      });
+      setMine(rows);
+    } catch {
+      // best-effort — the list just stays as it was
+    }
+  };
+
   useEffect(() => {
-    UserManager.getSession().then(setSession);
+    UserManager.getSession().then((s) => {
+      setSession(s);
+      if (s?.username) void loadMine(s.username);
+    });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -45,10 +85,11 @@ const Suggestions = () => {
 
       toast({
         title: "Suggestion submitted!",
-        description: "Thank you for your feedback",
+        description: "Thank you — an admin will review it and reply here.",
       });
 
       setSuggestion("");
+      await loadMine(session.username);
     } catch (error) {
       console.log("Error submitting suggestion:", error);
       toast({
@@ -68,7 +109,7 @@ const Suggestions = () => {
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-yellow-500/10 rounded-full blur-3xl" />
 
-      <div className="relative z-10 w-full max-w-lg">
+      <div className="relative z-10 w-full max-w-lg py-8">
         <Button
           variant="ghost"
           onClick={() => navigate("/")}
@@ -113,6 +154,42 @@ const Suggestions = () => {
             )}
           </CardContent>
         </Card>
+
+        {session?.username && (
+          <div className="mt-6 space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Your suggestions
+            </h2>
+            {mine.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                Nothing yet — anything you send will show up here with the admin's reply.
+              </p>
+            )}
+            {mine.map((row) => (
+              <Card key={row._row_id} className="border-white/10">
+                <CardContent className="py-3 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm break-words">{row.content}</p>
+                    <Badge variant={row.status === "replied" ? "secondary" : "outline"} className="shrink-0">
+                      {row.status === "replied" ? "Answered" : "Waiting for review"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{fmtTime(Number(row._created_at))}</p>
+                  {row.status === "replied" && row.admin_reply && (
+                    <div className="rounded-lg bg-primary/10 border border-primary/20 p-3 space-y-1">
+                      <p className="text-xs font-semibold flex items-center gap-1.5 text-primary">
+                        <MessageSquareReply className="w-3.5 h-3.5" />
+                        {row.replied_by ? `Reply from ${row.replied_by}` : "Reply from the team"}
+                        {row.replied_at ? ` · ${fmtTime(Number(row.replied_at))}` : ""}
+                      </p>
+                      <p className="text-sm break-words">{row.admin_reply}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

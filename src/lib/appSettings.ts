@@ -446,6 +446,23 @@ export const SETTING_DEFS: SettingDef[] = [
     default: "manual",
     description: "manual = keep the picked color until you change it; daily = a new color automatically every day.",
   },
+  {
+    key: "testing_mode_enabled",
+    label: "Testing mode",
+    group: "Security",
+    type: "toggle",
+    default: false,
+    description:
+      "While on, only the site owner and the admins listed below can use the site. Everyone else sees a testing notice.",
+  },
+  {
+    key: "testing_allowed_admins",
+    label: "Admins allowed in during testing",
+    group: "Security",
+    type: "text",
+    default: "",
+    description: "Comma-separated admin usernames that can enter the site while testing mode is on.",
+  },
 ];
 
 // The bannable-word list now lives in @/lib/moderation (tiered, with

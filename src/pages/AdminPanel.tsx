@@ -23,6 +23,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Send,
   Shield,
   Trash2,
   UserCog,
@@ -35,6 +36,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -175,6 +177,10 @@ interface SuggestionRow {
   _row_id: number;
   content: string;
   username: string;
+  status: string;
+  admin_reply: string | null;
+  replied_at: number | null;
+  replied_by: string | null;
   _created_at: number;
   [key: string]: unknown;
 }
@@ -327,6 +333,14 @@ const AdminPanel = () => {
   const { settings, loaded: settingsLoaded, update: updateSetting, reload: reloadSettings } = useAppSettings();
   const [purgeInfo, setPurgeInfo] = useState<{ at: number; count: number } | null>(null);
   const [purgeBusy, setPurgeBusy] = useState(false);
+
+  // Testing mode (owner): site open only to owner + chosen admins while testing
+  const [testingAdmins, setTestingAdmins] = useState("");
+  const [testingSaving, setTestingSaving] = useState(false);
+
+  useEffect(() => {
+    if (settingsLoaded) setTestingAdmins(String(settings.testing_allowed_admins ?? ""));
+  }, [settingsLoaded, settings.testing_allowed_admins]);
 
   // Password reset
   const [pwTarget, setPwTarget] = useState<{ userId: string; username: string } | null>(null);
@@ -686,6 +700,55 @@ const AdminPanel = () => {
   const handleDeleteReport = async (row: ReportRow) => {
     await db.deleteOne("user_reports", { _row_id: `eq.${row._row_id}` });
     loadAll();
+  };
+
+  // Suggestions: admin replies tell the sender what was done
+  const [replyDraft, setReplyDraft] = useState<Record<number, string>>({});
+  const [replyBusy, setReplyBusy] = useState<number | null>(null);
+
+  const handleReplySuggestion = async (row: SuggestionRow) => {
+    const text = (replyDraft[row._row_id] ?? "").trim();
+    if (!text) {
+      toast({ title: "Write a reply first", description: "Tell them what you did with the idea." });
+      return;
+    }
+    setReplyBusy(row._row_id);
+    try {
+      await db.updateOne(
+        "suggestions",
+        { _row_id: `eq.${row._row_id}` },
+        {
+          status: "replied",
+          admin_reply: text,
+          replied_at: Math.floor(Date.now() / 1000),
+          replied_by: isOwner ? "the owner" : adminSession?.username ?? "an admin",
+        }
+      );
+      try {
+        await db.insert("notifications", {
+          type: "suggestion",
+          recipient_username: row.username,
+          title: "Reply to your suggestion",
+          message: text.slice(0, 200),
+          link: "/suggestions",
+        });
+      } catch {
+        // notification is best-effort — the reply itself already saved
+      }
+      setSuggestions((prev) =>
+        prev.map((s) =>
+          s._row_id === row._row_id
+            ? { ...s, status: "replied", admin_reply: text, replied_at: Math.floor(Date.now() / 1000), replied_by: isOwner ? "the owner" : adminSession?.username ?? "an admin" }
+            : s
+        )
+      );
+      setReplyDraft((prev) => ({ ...prev, [row._row_id]: "" }));
+      toast({ title: "Reply sent", description: `@${row.username} was notified.` });
+    } catch {
+      toast({ title: "Couldn't send the reply", variant: "destructive" });
+    } finally {
+      setReplyBusy(null);
+    }
   };
 
   const handleDeleteSuggestion = async (row: SuggestionRow) => {
@@ -1927,19 +1990,57 @@ const AdminPanel = () => {
                 <div className="space-y-2">
                   {suggestions.map((suggestion) => (
                     <Card key={suggestion._row_id}>
-                      <CardContent className="py-3 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm break-words">
-                            <Lightbulb className="w-4 h-4 inline mr-1 text-yellow-500" />
-                            {suggestion.content}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            From @{suggestion.username} · {fmtTime(suggestion._created_at)}
-                          </p>
+                      <CardContent className="py-3 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm break-words">
+                              <Lightbulb className="w-4 h-4 inline mr-1 text-yellow-500" />
+                              {suggestion.content}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              From @{suggestion.username} · {fmtTime(suggestion._created_at)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {suggestion.status === "replied" && (
+                              <Badge variant="secondary">Replied</Badge>
+                            )}
+                            <Button variant="ghost" size="sm" onClick={() => handleDeleteSuggestion(suggestion)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteSuggestion(suggestion)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        {suggestion.status === "replied" && suggestion.admin_reply && (
+                          <div className="rounded-lg bg-secondary/60 border p-3 space-y-1">
+                            <p className="text-xs font-semibold">
+                              Your reply{suggestion.replied_by ? ` — ${suggestion.replied_by}` : ""}
+                              {suggestion.replied_at ? ` · ${fmtTime(Number(suggestion.replied_at))}` : ""}
+                            </p>
+                            <p className="text-sm break-words">{suggestion.admin_reply}</p>
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          <Textarea
+                            placeholder={
+                              suggestion.status === "replied"
+                                ? "Send another reply…"
+                                : "Reply to this person — tell them what you did with the idea…"
+                            }
+                            value={replyDraft[suggestion._row_id] ?? ""}
+                            onChange={(e) =>
+                              setReplyDraft((prev) => ({ ...prev, [suggestion._row_id]: e.target.value }))
+                            }
+                            className="min-h-[70px] bg-secondary/50"
+                          />
+                          <Button
+                            size="sm"
+                            disabled={replyBusy === suggestion._row_id || !(replyDraft[suggestion._row_id] ?? "").trim()}
+                            onClick={() => handleReplySuggestion(suggestion)}
+                          >
+                            <Send className="w-4 h-4 mr-2" />
+                            {replyBusy === suggestion._row_id ? "Sending…" : "Send reply"}
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -2001,6 +2102,62 @@ const AdminPanel = () => {
                     </p>
                   </CardContent>
                 </Card>
+                {isOwner && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">
+                        Testing mode {settings.testing_mode_enabled === true ? "— ON" : ""}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={settings.testing_mode_enabled === true}
+                          onCheckedChange={(v) => void updateSetting("testing_mode_enabled", v)}
+                          aria-label="Toggle testing mode"
+                        />
+                        <span className="text-sm font-medium">
+                          {settings.testing_mode_enabled === true
+                            ? "Testing mode is ON — the site is closed to everyone else"
+                            : "Testing mode is off"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        While it's on, only you and the admin usernames listed below can open the
+                        site — everyone else sees a "we're testing" page until you switch it off.
+                        Sign-in and admin pages stay reachable so you can get back in.
+                      </p>
+                      <div className="space-y-1">
+                        <Label htmlFor="testing-admins">Admins allowed in while testing</Label>
+                        <Textarea
+                          id="testing-admins"
+                          placeholder="admin usernames, comma separated"
+                          value={testingAdmins}
+                          onChange={(e) => setTestingAdmins(e.target.value)}
+                          className="min-h-[60px] bg-secondary/50"
+                        />
+                        <Button
+                          size="sm"
+                          disabled={testingSaving}
+                          onClick={async () => {
+                            setTestingSaving(true);
+                            try {
+                              await updateSetting("testing_allowed_admins", testingAdmins);
+                              toast({
+                                title: "Saved",
+                                description: "These admins can enter the site while testing mode is on.",
+                              });
+                            } finally {
+                              setTestingSaving(false);
+                            }
+                          }}
+                        >
+                          {testingSaving ? "Saving…" : "Save allowed admins"}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
                 <div className="space-y-2">
                   {downtimes.slice(0, 10).map((row) => (
                     <Card key={row._row_id}>

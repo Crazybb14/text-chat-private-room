@@ -146,29 +146,68 @@ const ChatRoom = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Incremental loading: after the first fetch we only ask for rows newer
+  // than the last one we saw, so refreshing stays fast even in busy rooms.
+  const lastRowIdRef = useRef(0);
+  const lastFullRefreshRef = useRef(0);
+  const avatarFetchedRef = useRef<Set<string>>(new Set());
+
+  const loadAvatars = useCallback(async (rows: ChatMessage[]) => {
+    const senders = [...new Set(rows.map((m) => m.sender_name))].filter(
+      (s) => s && !avatarFetchedRef.current.has(s)
+    );
+    if (senders.length === 0) return;
+    senders.forEach((s) => avatarFetchedRef.current.add(s));
+    try {
+      const profiles = await Promise.all(senders.map((s) => getProfile(s)));
+      setAvatars((prev) => {
+        const next = { ...prev };
+        senders.forEach((s, i) => {
+          if (profiles[i]?.avatar_url) next[s] = profiles[i]!.avatar_url as string;
+        });
+        return next;
+      });
+    } catch {
+      senders.forEach((s) => avatarFetchedRef.current.delete(s));
+    }
+  }, []);
+
   const loadMessages = useCallback(async () => {
     if (!roomId) return;
+    // A full refresh on first load, every 30 s afterwards (so admin deletes
+    // show up), and incremental fetches in between.
+    const full =
+      lastRowIdRef.current === 0 || Date.now() - lastFullRefreshRef.current > 30_000;
     try {
-      const rows = await db.query<ChatMessage>("messages", {
-        room_id: `eq.${roomId}`,
-        order: "_created_at.desc",
-      });
-      const latest = rows.slice(0, 200).reverse();
-      setMessages(latest);
-
-      const senders = [...new Set(latest.map((m) => m.sender_name))];
-      if (senders.length > 0) {
-        const profiles = await Promise.all(senders.map((s) => getProfile(s)));
-        const map: Record<string, string> = {};
-        senders.forEach((s, i) => {
-          if (profiles[i]?.avatar_url) map[s] = profiles[i]!.avatar_url as string;
+      if (full) {
+        const rows = await db.query<ChatMessage>("messages", {
+          room_id: `eq.${roomId}`,
+          order: "_row_id.desc",
+          limit: "150",
         });
-        setAvatars(map);
+        const latest = rows.reverse();
+        lastRowIdRef.current = latest.length ? Number(latest[latest.length - 1]._row_id) : 0;
+        lastFullRefreshRef.current = Date.now();
+        setMessages(latest);
+        await loadAvatars(latest);
+      } else {
+        const fresh = await db.query<ChatMessage>("messages", {
+          room_id: `eq.${roomId}`,
+          _row_id: `gt.${lastRowIdRef.current}`,
+          order: "_row_id.asc",
+          limit: "100",
+        });
+        if (fresh.length > 0) {
+          lastRowIdRef.current = Number(fresh[fresh.length - 1]._row_id);
+          const seen = new Set(fresh.map((m) => m._row_id));
+          setMessages((prev) => [...prev.filter((m) => !seen.has(m._row_id)), ...fresh].slice(-300));
+          await loadAvatars(fresh);
+        }
       }
     } catch (error) {
       console.error("Failed to load messages:", error);
     }
-  }, [roomId]);
+  }, [roomId, loadAvatars]);
 
   const loadPresence = useCallback(async () => {
     if (!roomId) return;
@@ -291,11 +330,17 @@ const ChatRoom = () => {
   // Polling: messages + presence + typing
   useEffect(() => {
     if (phase !== "ready") return;
+    // Fresh start for this room entry: forget what a previous visit cached
+    // so admin-deleted messages don't linger from memory.
+    lastRowIdRef.current = 0;
+    lastFullRefreshRef.current = 0;
+    avatarFetchedRef.current.clear();
+    setMessages([]);
     loadMessages();
     loadPresence();
     loadTyping();
     const messageTimer = setInterval(loadMessages, 2000);
-    const typingTimer = setInterval(loadTyping, 2000);
+    const typingTimer = setInterval(loadTyping, 3000);
     const presenceTimer = setInterval(loadPresence, 20000);
     return () => {
       clearInterval(messageTimer);

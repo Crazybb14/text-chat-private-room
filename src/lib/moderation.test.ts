@@ -145,3 +145,61 @@ describe("duration formatting", () => {
     expect(formatRemaining(null, true)).toBe("permanent");
   });
 });
+
+// @kliv-spec-derived — from user intent: "add way more bannable words and
+// catch the bypasses; some word wasn't being caught"
+describe("findViolation catches the expanded list and disguises", () => {
+  it.each(["fuking", "fuked", "shitted", "bich", "fcuk", "fuckface", "dipshit", "wanker"])(
+    "catches disguised/spelled forms of '%s'",
+    (word: string) => {
+      expect(findViolation(`you ${word} idiot`)).not.toBeNull();
+    }
+  );
+
+  it("catches suffixed disguises (shitting, wanking, molested)", () => {
+    expect(findViolation("stop shitting on me")).not.toBeNull();
+    expect(findViolation("he was molested")).not.toBeNull();
+  });
+
+  it("catches glued disguises (xniggerx)", () => {
+    const match = findViolation("xniggerx lol");
+    expect(match?.tier).toBe(5);
+  });
+
+  it("catches words spelled across many tokens (n i g g a)", () => {
+    expect(findViolation("hey n i g g a")).not.toBeNull();
+  });
+
+  it("catches accented spellings (fúck, shït)", () => {
+    expect(findViolation("what the fúck")).not.toBeNull();
+    expect(findViolation("oh shït")).not.toBeNull();
+  });
+
+  it("catches invisible-character splits (f\u200Bu\u200Bc\u200Bk)", () => {
+    expect(findViolation("f​u​c​k you")).not.toBeNull();
+  });
+
+  it("catches new tier-4 and tier-5 words (roofies, childporn, neonazi)", () => {
+    expect(findViolation("she got roofies")).not.toBeNull();
+    expect(findViolation("childporn is illegal")).not.toBeNull();
+    expect(findViolation("he is a neonazi")).not.toBeNull();
+  });
+});
+
+// @kliv-spec-derived — normal words must still never trip the filter
+describe("findViolation still leaves innocent language alone", () => {
+  it.each([
+    "weeding the garden",
+    "the mirror cracked",
+    "assess the damage",
+    "grape jam sandwich",
+    "my therapist appointment",
+    "speeding down the road",
+    "spicy food is the best",
+    "the raccoon got in again",
+    "scunthorpe united",
+    "rapping over the beat",
+  ])("allows '%s'", (text: string) => {
+    expect(findViolation(text)).toBeNull();
+  });
+});

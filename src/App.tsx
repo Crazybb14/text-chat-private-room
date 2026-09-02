@@ -15,6 +15,7 @@ import DirectMessage from "./pages/DirectMessage";
 import Suggestions from "./pages/Suggestions";
 import Appeal from "./pages/Appeal";
 import NotFound from "./pages/NotFound";
+import TestingGate from "@/components/TestingGate";
 
 const queryClient = new QueryClient();
 
@@ -24,20 +25,22 @@ const App = () => (
       <Toaster />
       <ImportantBanner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/terms" element={<TermsOfUse />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/chat/:roomId" element={<ChatRoom />} />
-          <Route path="/admin" element={<AdminLogin />} />
-          <Route path="/admin/panel" element={<AdminPanel />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/profile/:username" element={<Profile />} />
-          <Route path="/dm/:username" element={<DirectMessage />} />
-          <Route path="/suggestions" element={<Suggestions />} />
-          <Route path="/appeal" element={<Appeal />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <TestingGate>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/terms" element={<TermsOfUse />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/chat/:roomId" element={<ChatRoom />} />
+            <Route path="/admin" element={<AdminLogin />} />
+            <Route path="/admin/panel" element={<AdminPanel />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/profile/:username" element={<Profile />} />
+            <Route path="/dm/:username" element={<DirectMessage />} />
+            <Route path="/suggestions" element={<Suggestions />} />
+            <Route path="/appeal" element={<Appeal />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </TestingGate>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

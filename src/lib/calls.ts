@@ -159,3 +159,47 @@ export async function takeSignals(callId: number, me: string): Promise<CallSigna
 export const ICE_SERVERS: RTCIceServer[] = [
   { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
 ];
+
+export interface CallMessageRow {
+  _row_id: number;
+  call_id: number;
+  username: string;
+  text: string;
+  created_at: number;
+  [key: string]: unknown;
+}
+
+/** Sends a text message inside a call (for people with no mic, or anyone). */
+export async function sendCallMessage(callId: number, username: string, text: string): Promise<void> {
+  const clean = text.trim().slice(0, 500);
+  if (!clean) return;
+  await db.insert("call_messages", {
+    call_id: callId,
+    username,
+    text: clean,
+    created_at: Date.now(),
+  });
+}
+
+/** Call-chat rows newer than `sinceRowId` (0 = the whole conversation). */
+export async function getCallMessages(callId: number, sinceRowId = 0): Promise<CallMessageRow[]> {
+  const params: Record<string, string> = {
+    call_id: `eq.${callId}`,
+    order: "_row_id.asc",
+    limit: "200",
+  };
+  if (sinceRowId > 0) params._row_id = `gt.${sinceRowId}`;
+  return db.query<CallMessageRow>("call_messages", params);
+}
+
+/** Lines from other people that should pop up over the call screen. */
+export function popupLines(
+  rows: CallMessageRow[],
+  me: string,
+  now = Date.now(),
+  windowMs = 15_000
+): CallMessageRow[] {
+  return rows.filter(
+    (row) => row.username !== me && now - Number(row.created_at) < windowMs
+  );
+}
