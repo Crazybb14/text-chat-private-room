@@ -27,6 +27,7 @@ export const WORD_TIERS: WordTier[] = [
       "damn", "dammit", "damnit", "damned", "hell", "crap", "crappy", "piss", "pissed",
       "sucks", "stupid", "dumb", "idiot", "idiots", "moron", "morons", "loser", "losers",
       "freaking", "friggin", "lame",
+      "scum", "pathetic", "shutup", "trashy", "brainless", "worthless",
     ],
   },
   {
@@ -38,6 +39,10 @@ export const WORD_TIERS: WordTier[] = [
       "ass", "arse", "asses", "bastard", "bastards", "bollocks", "bugger", "goddamn",
       "goddammit", "douche", "bloody", "prick", "pricks", "meth", "heroin", "cocaine",
       "fentanyl", "crystalmeth",
+      "weed", "crack", "crackpipe", "oxycodone", "percocet", "xanax", "valium",
+      "ketamine", "mdma", "ecstasy", "lsd", "shrooms", "dmt", "molly", "benzos",
+      "adderall", "vicodin", "codeine", "morphine", "opium",
+      "tosser", "plonker", "pillock",
     ],
   },
   {
@@ -52,6 +57,9 @@ export const WORD_TIERS: WordTier[] = [
       "dickwad", "cock", "cocks", "twat", "twats", "wanker", "wankers", "asshole",
       "assholes", "arsehole", "jackass", "dumbass", "nazi", "nazis", "porn", "porno",
       "pornos", "pornography", "hentai",
+      "stfu", "wtf", "fuckboy", "fuckboys", "shitstain", "shithole", "shitfaced",
+      "asshat", "assclown", "asswipe", "butthole", "bullshitter", "dumbfucks",
+      "numbnuts", "horny", "nsfw",
     ],
   },
   {
@@ -63,6 +71,11 @@ export const WORD_TIERS: WordTier[] = [
       "cunt", "cunts", "cunty", "slut", "sluts", "slutty", "whore", "whores", "whoring",
       "thot", "thots", "motherfucker", "motherfuckers", "motherfcking", "cocksucker",
       "pussy", "pussies", "jizz", "blowjob", "handjob", "cumshot", "skank", "skanks",
+      "cum", "cums", "cumming", "creampie", "deepthroat", "rimjob", "fellatio",
+      "cunnilingus", "masturbate", "masturbates", "masturbation", "bukkake", "clit",
+      "clitoris", "dildo", "dildos", "buttplug", "gangbang", "gangbangs", "orgy",
+      "orgies", "sexting", "nudes", "jizzed", "boner", "jerkoff", "titties", "titty",
+      "boobies",
     ],
   },
   {
@@ -80,6 +93,11 @@ export const WORD_TIERS: WordTier[] = [
       "rapist", "rapists", "molest", "molester", "molesters", "molesting", "pedophile",
       "pedophiles", "pedophilia", "paedophile", "cp", "csam", "kys", "killyourself",
       "iwillkillyou", "heilhitler", "isis", "daesh", "alqaeda",
+      "hitler", "siegheil", "niglet", "niglets", "jigaboo", "jigaboos", "sheboon",
+      "sheboons", "porchmonkey", "shitskin", "shitskins", "chinc", "tard", "tards",
+      "groomer", "groomers", "zoophile", "zoophilia", "bestiality", "raped", "rapey",
+      "sexoffender", "pedobear", "cutyourself", "hangyourself", "offyourself",
+      "lynch", "lynching",
     ],
   },
 ];
@@ -89,7 +107,7 @@ export const ALL_BANNABLE_WORDS: { word: string; tier: number }[] = WORD_TIERS.f
 );
 
 /** Words that on their own mean a threat against someone. */
-const THREAT_WORDS = new Set(["kys", "killyourself", "iwillkillyou", "rape", "rapes", "raping"]);
+const THREAT_WORDS = new Set(["kys", "killyourself", "iwillkillyou", "rape", "rapes", "raping", "cutyourself", "hangyourself", "offyourself", "lynch", "lynching"]);
 /** Words about child sexual abuse material — the most serious category. */
 const CSAM_WORDS = new Set(["cp", "csam", "pedophile", "pedophiles", "pedophilia", "paedophile"]);
 

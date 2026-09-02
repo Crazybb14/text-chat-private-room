@@ -38,6 +38,8 @@ import { useKickWatch } from "@/lib/kickWatch";
 import NotificationBell from "@/components/NotificationBell";
 import FriendsDialog from "@/components/FriendsDialog";
 import PermissionPrompt from "@/components/PermissionPrompt";
+import { RoomSidebar, MobileSidebar, MenuButton } from "@/components/DiscordShell";
+import { ActivityChart } from "@/components/ActivityChart";
 import DowntimeScreen, { getActiveDowntime, type DowntimeInfo } from "@/components/DowntimeScreen";
 import {
   settingBool,
@@ -100,6 +102,7 @@ const Index = () => {
   const [creating, setCreating] = useState(false);
   const [voiceCallCounts, setVoiceCallCounts] = useState<Record<number, number>>({});
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const [roomsDrawer, setRoomsDrawer] = useState(false);
   const [downtime, setDowntime] = useState<DowntimeInfo | null>(null);
   const [banInfo, setBanInfo] = useState<BanStatus | null>(null);
   const [lockInfo, setLockInfo] = useState<AccountLockRow | null>(null);
@@ -527,44 +530,116 @@ const Index = () => {
     : publicRooms;
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-background pointer-events-none" />
-      <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
-      <div className="absolute top-1/3 -right-32 w-96 h-96 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
+    <div className="min-h-screen bg-[#313338] text-[#dbdee1]">
+      <div className="flex h-screen overflow-hidden">
+      <aside className="hidden w-60 shrink-0 md:flex">
+        <RoomSidebar
+          siteName={siteName}
+          rooms={rooms.map((r) => ({
+            id: Number(r._row_id),
+            name: r.name,
+            is_private: r.type === "private" ? 1 : 0,
+            is_voice: voiceRooms.some((v) => Number(v._row_id) === Number(r._row_id)) ? 1 : 0,
+          }))}
+          activeRoomId={null}
+          username={username}
+          canCreateRooms={allowRoomCreation}
+          isStaff
+          voiceCounts={Object.fromEntries(voiceRooms.map((r) => [Number(r._row_id), roomOnline(Number(r._row_id))]))}
+          onOpenRoom={(r) => navigate(`/chat/${r.id}`, { state: { voice: Boolean(r.is_voice) } })}
+          onHome={() => window.scrollTo({ top: 0 })}
+          onCreateRoom={() => openCreate()}
+          onDirectMessages={() => setFriendsOpen(true)}
+          onFriends={() => setFriendsOpen(true)}
+          onSettings={() => navigate("/settings")}
+          onLogout={handleSignOut}
+          onAdmin={handleAdminClick}
+        />
+      </aside>
+      <MobileSidebar open={roomsDrawer} onClose={() => setRoomsDrawer(false)}>
+        <RoomSidebar
+          siteName={siteName}
+          rooms={rooms.map((r) => ({
+            id: Number(r._row_id),
+            name: r.name,
+            is_private: r.type === "private" ? 1 : 0,
+            is_voice: voiceRooms.some((v) => Number(v._row_id) === Number(r._row_id)) ? 1 : 0,
+          }))}
+          activeRoomId={null}
+          username={username}
+          canCreateRooms={allowRoomCreation}
+          isStaff
+          voiceCounts={Object.fromEntries(voiceRooms.map((r) => [Number(r._row_id), roomOnline(Number(r._row_id))]))}
+          onOpenRoom={(r) => {
+            setRoomsDrawer(false);
+            navigate(`/chat/${r.id}`, { state: { voice: Boolean(r.is_voice) } });
+          }}
+          onHome={() => setRoomsDrawer(false)}
+          onCreateRoom={() => {
+            setRoomsDrawer(false);
+            openCreate();
+          }}
+          onDirectMessages={() => setFriendsOpen(true)}
+          onFriends={() => setFriendsOpen(true)}
+          onSettings={() => navigate("/settings")}
+          onLogout={handleSignOut}
+          onAdmin={handleAdminClick}
+        />
+      </MobileSidebar>
 
-      <header className="relative z-10 border-b border-white/5 sticky top-0 bg-background/80 backdrop-blur">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center">
-              <MessageSquare className="w-5 h-5 text-primary" />
-            </div>
-            <span className="font-bold text-lg">{siteName}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            {showOnline && onlineCount > 0 && (
-              <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground mr-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                {onlineCount} online
-              </span>
-            )}
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-12 shrink-0 items-center gap-2 px-3 shadow-[0_1px_0_rgba(0,0,0,0.25)] md:px-4">
+          <MenuButton onClick={() => setRoomsDrawer(true)} />
+          <MessageSquare className="h-6 w-6 shrink-0 text-[#80848e]" aria-hidden />
+          <span className="truncate text-[15px] font-bold text-[#f2f3f5]">welcome</span>
+          {showOnline && onlineCount > 0 && (
+            <span className="ml-2 hidden items-center gap-1.5 text-xs text-[#b5bac1] sm:inline-flex">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              {onlineCount} online
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-1">
             <NotificationBell username={username || ""} />
-            <Button variant="ghost" size="icon" aria-label="Friends" title="Friends" onClick={() => setFriendsOpen(true)}>
-              <Users className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={() => navigate("/settings")}>
-              <SettingsIcon className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="icon" aria-label="Admin" title="Admin" onClick={handleAdminClick}>
-              <Shield className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="icon" aria-label="Sign out" title="Sign out" onClick={handleSignOut}>
-              <LogOut className="w-5 h-5" />
-            </Button>
+            <button
+              type="button"
+              aria-label="Friends"
+              title="Friends"
+              onClick={() => setFriendsOpen(true)}
+              className="rounded p-2 text-[#b5bac1] hover:bg-[#35373c] hover:text-white"
+            >
+              <Users className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Settings"
+              title="Settings"
+              onClick={() => navigate("/settings")}
+              className="rounded p-2 text-[#b5bac1] hover:bg-[#35373c] hover:text-white"
+            >
+              <SettingsIcon className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Admin"
+              title="Admin"
+              onClick={handleAdminClick}
+              className="rounded p-2 text-[#b5bac1] hover:bg-[#35373c] hover:text-white"
+            >
+              <Shield className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Sign out"
+              title="Sign out"
+              onClick={handleSignOut}
+              className="rounded p-2 text-[#b5bac1] hover:bg-[#35373c] hover:text-[#f23f43]"
+            >
+              <LogOut className="h-5 w-5" />
+            </button>
           </div>
-        </div>
-      </header>
-
-      <main className="relative z-10 max-w-5xl mx-auto px-4 py-8 space-y-8">
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
         {announcement && (
           <Card className="border-primary/30 bg-primary/5">
             <CardContent className="py-3.5 flex items-start gap-3">
@@ -881,6 +956,7 @@ const Index = () => {
               </CardContent>
             </Card>
           </div>
+          {settingBool(settings, "lobby_feedback_enabled") ? (
           <Card>
             <CardContent className="py-5 space-y-3">
               <h3 className="font-semibold flex items-center gap-2 text-sm">
@@ -913,20 +989,14 @@ const Index = () => {
               </button>
             </CardContent>
           </Card>
+          ) : null}
         </section>
-      </main>
 
-      <footer className="relative z-10 border-t border-white/5 py-4">
-        <div className="max-w-5xl mx-auto px-4 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Signed in as @{username}</span>
-          <button
-            className="flex items-center gap-1 hover:text-foreground transition-colors"
-            onClick={() => navigate("/suggestions")}
-          >
-            <Lightbulb className="w-3.5 h-3.5" /> Suggestions
-          </button>
+        {settingBool(settings, "activity_chart_enabled") ? <ActivityChart /> : null}
         </div>
-      </footer>
+        </div>
+      </main>
+      </div>
 
       <Dialog open={friendsOpen} onOpenChange={setFriendsOpen}>
         <DialogContent className="max-w-md">

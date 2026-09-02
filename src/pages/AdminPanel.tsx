@@ -92,7 +92,14 @@ import {
 import AdminAI from "@/components/AdminAI";
 import AdminModeration from "@/components/AdminModeration";
 import AdminWordList from "@/components/AdminWordList";
+import AdminAppeals from "@/components/AdminAppeals";
+import AdminAnalytics from "@/components/AdminAnalytics";
+import AdminAuditLog from "@/components/AdminAuditLog";
+import AdminMessageSearch from "@/components/AdminMessageSearch";
 import { formatDuration } from "@/lib/moderation";
+
+// still referenced by ban-history formatting below
+void formatDuration;
 import {
   canDo,
   clearAdminSession,
@@ -258,7 +265,8 @@ const AdminPanel = () => {
   const [newRoomType, setNewRoomType] = useState("public");
   const [newRoomVoice, setNewRoomVoice] = useState(false);
   const [banInput, setBanInput] = useState("");
-  const [banDuration, setBanDuration] = useState("0");
+  const [banAmount, setBanAmount] = useState("30");
+  const [banUnit, setBanUnit] = useState("minutes");
   const [banReason, setBanReason] = useState("");
   const [downtimeHours, setDowntimeHours] = useState("2");
   const [downtimeReason, setDowntimeReason] = useState("");
@@ -608,21 +616,24 @@ const AdminPanel = () => {
   const handleBanUser = async (usernameRaw: string) => {
     const username = usernameRaw.trim().toLowerCase();
     if (!username) return;
-    const minutes = Number(banDuration) || 0;
+    const amount = Math.max(0, Math.floor(Number(banAmount) || 0));
+    const factor =
+      banUnit === "seconds" ? 1 : banUnit === "minutes" ? 60 : banUnit === "hours" ? 3600 : 86400;
+    const seconds = banUnit === "forever" || amount <= 0 ? 0 : amount * factor;
+    const humanText =
+      seconds <= 0 ? "permanently" : `for ${amount} ${seconds === 1 ? banUnit.replace(/s$/, "") : banUnit}`;
     await db.insert("bans", {
       username,
       device_id: null,
       room_id: null,
-      ban_duration: minutes > 0 ? minutes * 60 : 0,
-      reason:
-        banReason.trim() ||
-        (minutes > 0 ? `Banned by an admin for ${formatDuration(minutes)}` : "Banned by an admin"),
+      ban_duration: seconds,
+      reason: banReason.trim() || `Banned by an admin ${humanText}`,
       tier: null,
       source: "admin",
     });
     toast({
       title: "Banned",
-      description: `@${username} is banned ${minutes > 0 ? `for ${formatDuration(minutes)}` : "permanently"}.`,
+      description: `@${username} is banned ${humanText}.`,
     });
     setBanInput("");
     setBanReason("");
@@ -983,6 +994,10 @@ const AdminPanel = () => {
             {can("admins") && <TabsTrigger value="admins">Admins</TabsTrigger>}
             {can("ips") && <TabsTrigger value="ips">IP Logs</TabsTrigger>}
             {can("people") && <TabsTrigger value="bans">Bans</TabsTrigger>}
+            {can("people") && <TabsTrigger value="appeals">Appeals</TabsTrigger>}
+            {can("messages") && <TabsTrigger value="search">Message Search</TabsTrigger>}
+            {can("messages") && <TabsTrigger value="analytics">Analytics</TabsTrigger>}
+            {isOwner && <TabsTrigger value="audit">Audit Log</TabsTrigger>}
             {can("people") && <TabsTrigger value="moderation">Moderation</TabsTrigger>}
             {can("people") && <TabsTrigger value="words">Bannable Words</TabsTrigger>}
             {can("people") && (
@@ -1708,19 +1723,26 @@ const AdminPanel = () => {
                         onKeyDown={(e) => e.key === "Enter" && handleBanUser(banInput)}
                         className="flex-1 min-w-40"
                       />
-                      <Select value={banDuration} onValueChange={setBanDuration}>
-                        <SelectTrigger className="w-40">
+                      <Input
+                        type="number"
+                        min={1}
+                        value={banUnit === "forever" ? "" : banAmount}
+                        disabled={banUnit === "forever"}
+                        onChange={(e) => setBanAmount(e.target.value)}
+                        placeholder="30"
+                        className="w-24"
+                        aria-label="Ban length"
+                      />
+                      <Select value={banUnit} onValueChange={setBanUnit}>
+                        <SelectTrigger className="w-36">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="0">Permanent</SelectItem>
-                          <SelectItem value="30">30 minutes</SelectItem>
-                          <SelectItem value="60">1 hour</SelectItem>
-                          <SelectItem value="360">6 hours</SelectItem>
-                          <SelectItem value="1440">1 day</SelectItem>
-                          <SelectItem value="10080">7 days</SelectItem>
-                          <SelectItem value="43200">30 days</SelectItem>
-                          <SelectItem value="86400">60 days</SelectItem>
+                          <SelectItem value="seconds">seconds</SelectItem>
+                          <SelectItem value="minutes">minutes</SelectItem>
+                          <SelectItem value="hours">hours</SelectItem>
+                          <SelectItem value="days">days</SelectItem>
+                          <SelectItem value="forever">forever</SelectItem>
                         </SelectContent>
                       </Select>
                       <Button variant="destructive" onClick={() => handleBanUser(banInput)} disabled={!banInput.trim()}>
@@ -2109,6 +2131,26 @@ const AdminPanel = () => {
           {/* AI (beta) */}
           <TabsContent value="ai" className="space-y-4 mt-4">
             <AdminAI />
+          </TabsContent>
+
+          {/* APPEALS — ban appeals review */}
+          <TabsContent value="appeals" className="space-y-4 mt-4">
+            {can("people") ? withSignIn(<AdminAppeals />) : NoPermission}
+          </TabsContent>
+
+          {/* ANALYTICS — real usage charts */}
+          <TabsContent value="analytics" className="space-y-4 mt-4">
+            {can("messages") ? <AdminAnalytics /> : NoPermission}
+          </TabsContent>
+
+          {/* MESSAGE SEARCH — search every room message */}
+          <TabsContent value="search" className="space-y-4 mt-4">
+            {can("messages") ? withSignIn(<AdminMessageSearch />) : NoPermission}
+          </TabsContent>
+
+          {/* AUDIT LOG — owner only */}
+          <TabsContent value="audit" className="space-y-4 mt-4">
+            {isOwner ? <AdminAuditLog /> : NoPermission}
           </TabsContent>
         </Tabs>
       </main>

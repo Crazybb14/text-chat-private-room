@@ -4,16 +4,18 @@ import {
   ArrowLeft,
   Clock,
   Copy,
+  Hash,
   Loader2,
   Lock,
   Megaphone,
+  MessageSquareOff,
   Mic,
   Paperclip,
   Phone,
   Radio,
   Send,
   Users,
-  Video as VideoIcon,
+  Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -59,6 +61,7 @@ import { useUserPrefs } from "@/lib/userSettings";
 import { playMessageChime } from "@/lib/sound";
 import { uploadRoomFile, validateChatFile } from "@/lib/chatFiles";
 import { notifyFriendsOfCall } from "@/lib/autoJoin";
+import { ShellRoom, RoomSidebar, MobileSidebar, MenuButton, DC, Avatar } from "@/components/DiscordShell";
 import BanScreen from "@/components/BanScreen";
 import { checkBanStatus, moderateMessage, type BanStatus } from "@/lib/moderation";
 
@@ -84,6 +87,8 @@ const ChatRoom = () => {
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [room, setRoom] = useState<RoomRow | null>(null);
+  const [allRooms, setAllRooms] = useState<RoomRow[]>([]);
+  const [roomsDrawer, setRoomsDrawer] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
 
   // If an admin kicks this account, sign out and go back to the login page.
@@ -264,6 +269,7 @@ const ChatRoom = () => {
           return;
         }
         setRoom(found);
+        setAllRooms(roomRows);
         saveProfile(currentSession.username, { status: "online" }).catch(() => undefined);
 
         if (found.type === "private" && sessionStorage.getItem(`room_unlocked_${roomId}`) !== "1") {
@@ -608,250 +614,346 @@ const ChatRoom = () => {
     isVoiceRoom(room) ||
     navVoice ||
     (room !== null && knownVoiceIds.includes(Number(room._row_id)));
-  let roomHue = 0;
-  for (let i = 0; i < room.name.length; i++) roomHue = (roomHue * 31 + room.name.charCodeAt(i)) % 360;
+
+  const sidebarRooms = allRooms.map((r) => ({
+    id: Number(r._row_id),
+    name: r.name,
+    is_private: r.type === "private" ? 1 : 0,
+    is_voice: isVoiceRoom(r) ? 1 : 0,
+  }));
+  const sidebarProps = {
+    siteName: settingText(settings, "site_name") || "ChatRooms",
+    rooms: sidebarRooms,
+    activeRoomId: roomId ? Number(roomId) : null,
+    username,
+    canCreateRooms: isOwner || settingBool(settings, "allow_room_creation"),
+    isStaff: true,
+    onOpenRoom: (r: ShellRoom) =>
+      navigate(`/chat/${r.id}`, { state: { voice: Boolean(r.is_voice) } }),
+    onHome: () => navigate("/"),
+    onCreateRoom: () => navigate("/", { state: { openCreate: true } }),
+    onDirectMessages: () => setFriendsOpen(true),
+    onFriends: () => setFriendsOpen(true),
+    onSettings: () => navigate("/settings"),
+    onLogout: () => {
+      void UserManager.signOut().then(() => navigate("/login"));
+    },
+    onAdmin: () => navigate("/admin"),
+  };
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      <header className="border-b border-white/5 shrink-0">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <Button variant="ghost" size="icon" aria-label="Back to rooms" onClick={() => navigate("/")} title="Back to rooms">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-white font-bold"
-              style={{
-                background: `linear-gradient(135deg, hsl(${roomHue} 60% 42%), hsl(${(roomHue + 45) % 360} 60% 34%))`,
-              }}
-            >
-              {isVoice ? <Radio className="w-5 h-5" /> : room.name.charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="font-bold truncate">{room.name}</h1>
-                {room.type === "private" && (
-                  <Badge variant="secondary" className="gap-1 shrink-0">
-                    <Lock className="w-3 h-3" /> Private
-                  </Badge>
-                )}
-                {room.type === "private" && room.code && (
-                  <button
-                    type="button"
-                    className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-secondary/70 hover:bg-secondary flex items-center gap-1 shrink-0"
-                    title="Click to copy this room's join code"
-                    onClick={() => {
-                      void navigator.clipboard
-                        .writeText(room.code ?? "")
-                        .then(() =>
-                          toast({
-                            title: "Room code copied",
-                            description: `${room.code} — share it to let people into ${room.name}.`,
-                          })
-                        )
-                        .catch(() => toast({ title: "Room code", description: room.code ?? "" }));
-                    }}
-                  >
-                    <Copy className="w-3 h-3" /> {room.code}
-                  </button>
-                )}
-                {isVoice && (
-                  <Badge variant="secondary" className="gap-1 shrink-0">
-                    <Radio className="w-3 h-3" /> Voice
-                  </Badge>
-                )}
-              </div>
-              {showOnline && (
-                <p className="text-xs text-muted-foreground truncate">
-                  {onlineNames.length} online
-                  {onlineNames.length > 0 && username ? ` — ${onlineNames.join(", ")}` : ""}
-                </p>
-              )}
-              {typingOn && typingNames.length > 0 && (
-                <p className="text-xs text-primary/80 truncate flex items-center gap-1">
-                  <span className="inline-flex gap-0.5">
-                    <span className="w-1 h-1 rounded-full bg-primary animate-bounce" />
-                    <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-delay:0.15s]" />
-                    <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-delay:0.3s]" />
-                  </span>
-                  {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {(room.type === "private" || isOwner || activeCall || isVoice) && (
-              <Button
-                size="sm"
-                variant={activeCall ? "default" : "outline"}
-                className={activeCall ? "gap-1.5 bg-emerald-600 hover:bg-emerald-700" : "gap-1.5"}
-                onClick={activeCall ? handleJoinCall : () => void handleStartCall()}
-              >
-                <VideoIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">
-                  {activeCall ? `Join call (${callCount})` : isVoice ? "Join voice" : "Start call"}
-                </span>
-              </Button>
-            )}
-            <NotificationBell username={username || ""} />
-            <Button variant="ghost" size="icon" aria-label="Friends" title="Friends" onClick={() => setFriendsOpen(true)}>
-              <Users className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      {announcement && (
-        <div className="shrink-0 border-b border-primary/20 bg-primary/5">
-          <div className="max-w-4xl mx-auto px-4 py-2 flex items-start gap-2">
-            <Megaphone className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
-            <p className="text-xs break-words">{announcement}</p>
-          </div>
-        </div>
-      )}
-
-      <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          {isVoice && !call && (
-            <Card className="mb-4 border-emerald-500/30 bg-emerald-500/5">
-              <CardContent className="py-5 flex flex-col sm:flex-row items-center gap-4 justify-between">
-                <div className="flex items-center gap-3 text-center sm:text-left">
-                  <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 flex items-center justify-center shrink-0">
-                    <Mic className="w-5 h-5 text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">This is a voice room</p>
-                    <p className="text-xs text-muted-foreground">
-                      {activeCall
-                        ? `${callCount} in the call right now — jump in and talk.`
-                        : "Nobody is talking yet — start the call and say hi. Text chat works here too."}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  className="gap-2 bg-emerald-600 hover:bg-emerald-700 shrink-0"
-                  onClick={activeCall ? handleJoinCall : () => void handleStartCall()}
-                >
-                  <Phone className="w-4 h-4" />
-                  {activeCall ? `Join the call (${callCount})` : "Start the call"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-          {messages.length === 0 && (
-            <div className="text-center py-16 text-muted-foreground text-sm">
-              <Users className="w-10 h-10 mx-auto mb-3 opacity-50" />
-              No messages yet. Say hi!
-            </div>
-          )}
-          {messages.map((message) => (
-            <MessageBubble
-              key={message._row_id}
-              message={message}
-              isOwn={message.sender_name === username}
-              currentUsername={username || ""}
-              avatarUrl={avatars[message.sender_name]}
-              fontSize={prefs.font_size}
-              showTimestamp={prefs.timestamps}
-              compact={prefs.compact}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="border-t border-white/5 shrink-0">
-        <form onSubmit={handleSend} className="max-w-4xl mx-auto px-4 pt-3 pb-2 flex gap-2">
-          <div className="flex-1 min-w-0 space-y-1">
-            <Input
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                syncTyping(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && prefs.enter_to_send) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder={slowLeft > 0 ? `Slow mode — wait ${Math.ceil(slowLeft / 1000)}s…` : `Message ${room.name}...`}
-              maxLength={maxMessageLength}
-              disabled={slowLeft > 0}
-            />
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>
-                {charsLeft <= 100 && `${charsLeft} characters left`}
-                {autoDeleteHours > 0 && (
-                  <span className="inline-flex items-center gap-1">
-                    {charsLeft <= 100 && " · "}
-                    <Clock className="w-3 h-3" /> auto-clears after {autoDeleteHours}h
-                  </span>
-                )}
-              </span>
-              <span>{prefs.enter_to_send ? "Enter to send" : "Send with the button"}</span>
-            </div>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={(e) => void handleFilePicked(e.target.files?.[0])}
-          />
-          {settingBool(settings, "public_room_file_sharing") && (
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-10 w-10 shrink-0 self-start mt-0.5"
-              aria-label="Send a file"
-              title="Send a file"
-              disabled={uploadPct !== null}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploadPct !== null ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Paperclip className="w-4 h-4" />
-              )}
-            </Button>
-          )}
-          <Button
-            type="submit"
-            className="h-10 self-start mt-0.5 px-5"
-            disabled={sending || !input.trim() || slowLeft > 0}
-          >
-            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />}
-            Send
-          </Button>
-        </form>
-        {uploadPct !== null && (
-          <div className="max-w-4xl mx-auto px-4 pb-3">
-            <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${Math.min(100, Math.max(2, uploadPct))}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1">Uploading… {Math.round(uploadPct)}%</p>
-          </div>
-        )}
-      </div>
-
-      {call && username && (
-        <CallStage
-          callId={call.callId}
-          me={username}
-          label={call.label}
-          onLeave={(reason) => {
-            setCall(null);
-            if (reason) toast({ title: reason });
+    <div className="flex h-screen overflow-hidden bg-[#313338] text-[#dbdee1]">
+      <aside className="hidden w-60 shrink-0 md:flex">
+        <RoomSidebar {...sidebarProps} />
+      </aside>
+      <MobileSidebar open={roomsDrawer} onClose={() => setRoomsDrawer(false)}>
+        <RoomSidebar
+          {...sidebarProps}
+          onOpenRoom={(r) => {
+            setRoomsDrawer(false);
+            navigate(`/chat/${r.id}`, { state: { voice: Boolean(r.is_voice) } });
           }}
         />
-      )}
+      </MobileSidebar>
+
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-12 shrink-0 items-center gap-2 px-3 shadow-[0_1px_0_rgba(0,0,0,0.25)] md:px-4">
+          <MenuButton onClick={() => setRoomsDrawer(true)} />
+          {isVoice ? (
+            <Volume2 className="h-6 w-6 shrink-0 text-[#80848e]" aria-hidden />
+          ) : (
+            <Hash className="h-6 w-6 shrink-0 text-[#80848e]" aria-hidden />
+          )}
+          <h1 className="truncate text-[15px] font-bold text-[#f2f3f5]">{room.name}</h1>
+          {room.type === "private" ? (
+            <Badge variant="outline" className="ml-1 hidden gap-1 border-white/10 bg-white/5 text-[#b5bac1] sm:inline-flex">
+              <Lock className="h-3 w-3" aria-hidden /> Private
+            </Badge>
+          ) : null}
+          {room.type === "private" && room.code ? (
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(room.code ?? "");
+                toast({ title: "Room code copied" });
+              }}
+              className="hidden items-center gap-1.5 rounded-md bg-black/30 px-2 py-1 font-mono text-xs text-[#b5bac1] hover:bg-black/40 sm:flex"
+              title="Copy room code"
+            >
+              <Copy className="h-3.5 w-3.5" aria-hidden />
+              {room.code}
+            </button>
+          ) : null}
+          <span className="mx-2 hidden h-6 w-px shrink-0 bg-white/10 sm:block" aria-hidden />
+          {typingNames.length > 0 ? (
+            <span className="hidden min-w-0 items-center gap-1.5 text-sm text-[#b5bac1] sm:flex">
+              <Clock className="h-4 w-4 shrink-0 text-[#80848e]" aria-hidden />
+              <span className="truncate italic">
+                {typingNames.slice(0, 2).join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…
+              </span>
+            </span>
+          ) : showOnline ? (
+            <span className="hidden items-center gap-1.5 text-sm text-[#b5bac1] sm:flex">
+              <Users className="h-4 w-4 shrink-0 text-[#80848e]" aria-hidden />
+              {onlineNames.length} {onlineNames.length === 1 ? "person" : "people"} here
+            </span>
+          ) : null}
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {!isVoice ? (
+              <button
+                type="button"
+                onClick={activeCall ? handleJoinCall : () => void handleStartCall()}
+                className="hidden items-center gap-1.5 rounded bg-transparent px-2 py-1.5 text-sm font-medium text-[#b5bac1] hover:bg-[#35373c] hover:text-white sm:flex"
+              >
+                <Phone className="h-4 w-4" aria-hidden />
+                {call ? "Leave call" : activeCall ? `Join call (${callCount})` : "Start call"}
+              </button>
+            ) : null}
+            <NotificationBell username={username ?? ""} />
+            <button
+              type="button"
+              onClick={() => setFriendsOpen(true)}
+              className="rounded p-2 text-[#b5bac1] hover:bg-[#35373c] hover:text-white"
+              aria-label="Friends and direct messages"
+              title="Friends & DMs"
+            >
+              <Users className="h-5 w-5" aria-hidden />
+            </button>
+          </div>
+        </header>
+
+        {announcement ? (
+          <div className="shrink-0 border-b border-black/30 bg-[#5865f2]/15 px-4 py-2 text-center text-sm text-[#dbdee1]">
+            <span className="inline-flex items-center gap-2">
+              <Megaphone className="h-4 w-4 shrink-0 text-[#7983f5]" aria-hidden />
+              {announcement}
+            </span>
+          </div>
+        ) : null}
+
+        {isVoice ? (
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+            <div className="mx-auto max-w-4xl space-y-5">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-6 text-center">
+                <Radio className="mx-auto h-8 w-8 text-emerald-400" aria-hidden />
+                <h2 className="mt-2 text-lg font-semibold text-emerald-300">{room.name}</h2>
+                {call ? (
+                  <p className="mt-1 text-sm text-emerald-200/80">You're connected. Talk away!</p>
+                ) : activeCall ? (
+                  <>
+                    <p className="mt-1 text-sm text-emerald-200/80">
+                      {callCount} {callCount === 1 ? "person is" : "people are"} talking right now.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleJoinCall}
+                      className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-400"
+                    >
+                      <Phone className="h-4 w-4" aria-hidden /> Join the call
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm text-emerald-200/80">Nobody is talking yet — start the call and say hi.</p>
+                    <button
+                      type="button"
+                      onClick={() => void handleStartCall()}
+                      className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-400"
+                    >
+                      <Mic className="h-4 w-4" aria-hidden /> Start talking
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <h3 className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[#949ba4]">
+                <Users className="h-4 w-4" aria-hidden /> In this room
+              </h3>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {onlineNames.length === 0 ? (
+                  <p className="col-span-full text-sm text-[#949ba4]">Nobody else is here yet.</p>
+                ) : (
+                  onlineNames.map((name) => (
+                    <div key={name} className="flex items-center gap-2.5 rounded-lg bg-[#2b2d31] px-3 py-2">
+                      <Avatar name={name} size={32} />
+                      <span className="truncate text-sm font-medium text-[#dbdee1]">{name}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#2b2d31] px-5 py-6 text-center">
+                <MessageSquareOff className="mx-auto h-7 w-7 text-[#80848e]" aria-hidden />
+                <p className="mt-2 text-sm font-semibold text-[#f2f3f5]">Voice-only room — no text chat</p>
+                <p className="mt-1 text-sm text-[#949ba4]">
+                  This room is for talking. Use a text room or a direct message to type.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto max-w-4xl px-4 pb-4 pt-2">
+                {messages.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <Hash className="mx-auto h-12 w-12 text-[#4e5058]" aria-hidden />
+                    <h2 className="mt-4 text-2xl font-bold text-[#f2f3f5]">Welcome to #{room.name}</h2>
+                    <p className="mt-1 text-sm text-[#949ba4]">This is the very beginning of this room. Say something!</p>
+                    {autoDeleteHours > 0 ? (
+                      <p className="mt-2 text-xs text-[#80848e]">
+                        Messages here are cleared automatically every {autoDeleteHours} hours.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  messages.map((message, i) => {
+                    const prev = messages[i - 1];
+                    const grouped = Boolean(
+                      prev &&
+                        prev.sender_name === message.sender_name &&
+                        !prev.file_path &&
+                        !message.file_path &&
+                        Math.abs(Number(message._created_at) - Number(prev._created_at)) < 300,
+                    );
+                    return (
+                      <MessageBubble
+                        key={String(message._row_id)}
+                        message={message}
+                        isOwn={message.sender_name === username}
+                        currentUsername={username ?? ""}
+                        avatarUrl={avatars[message.sender_name]}
+                        fontSize={prefs.font_size}
+                        showTimestamp={prefs.timestamps}
+                        compact={prefs.compact}
+                        grouped={grouped}
+                      />
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="shrink-0 px-4 pb-5">
+              <form
+                onSubmit={(e) => {
+                  void handleSend(e);
+                }}
+                className="flex items-end gap-3 rounded-xl bg-[#383a40] px-4 py-2.5"
+              >
+                {settingBool(settings, "public_room_file_sharing") && slowLeft <= 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={sending}
+                    title="Attach a file (an admin approves it before others can see it)"
+                    aria-label="Attach a file"
+                    className="shrink-0 rounded-full p-1.5 text-[#b5bac1] hover:bg-[#4e5058] hover:text-white disabled:opacity-40"
+                  >
+                    <Paperclip className="h-5 w-5" aria-hidden />
+                  </button>
+                ) : null}
+                <input
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    syncTyping(e.target.value);
+                  }}
+                  onBlur={() => syncTyping("", true)}
+                  placeholder={slowLeft > 0 ? `Slow mode — wait ${slowLeft}s` : `Message #${room.name}`}
+                  className="min-w-0 flex-1 bg-transparent py-1.5 text-[15px] text-[#dbdee1] outline-none placeholder:text-[#6d6f78]"
+                  maxLength={2000}
+                  disabled={sending}
+                  aria-label="Message"
+                  autoComplete="off"
+                />
+                <button
+                  type="submit"
+                  disabled={sending || !input.trim()}
+                  className="shrink-0 rounded-full p-1.5 text-[#b5bac1] hover:bg-[#4e5058] hover:text-white disabled:opacity-30"
+                  aria-label="Send message"
+                >
+                  {sending ? (
+                    <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                  ) : (
+                    <Send className="h-5 w-5" aria-hidden />
+                  )}
+                </button>
+              </form>
+              <div className="mt-1.5 flex items-center gap-3 px-1 text-[11px] text-[#949ba4]">
+                {charsLeft !== null && charsLeft < 100 ? <span>{charsLeft} characters left</span> : null}
+                {slowLeft > 0 ? <span className="text-[#faa61a]">Slow mode: {slowLeft}s</span> : null}
+                {typingNames.length > 0 ? (
+                  <span className="sm:hidden">
+                    {typingNames.slice(0, 2).join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…
+                  </span>
+                ) : null}
+                <span className="ml-auto hidden sm:block">Press Enter to send</span>
+              </div>
+              {uploadPct !== null ? (
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-black/30">
+                  <div className="h-full rounded-full bg-[#5865f2] transition-all" style={{ width: `${uploadPct}%` }} />
+                </div>
+              ) : null}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleFilePicked(file);
+              }}
+              aria-hidden
+              tabIndex={-1}
+            />
+          </>
+        )}
+      </main>
+
+      {showOnline && !isVoice ? (
+        <aside className="hidden w-60 shrink-0 flex-col bg-[#2b2d31] lg:flex">
+          <h2 className="px-4 pb-2 pt-4 text-[11px] font-bold uppercase tracking-wide text-[#949ba4]">
+            In this room — {onlineNames.length}
+          </h2>
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+            {onlineNames.map((name) => (
+              <div key={name} className={`flex items-center gap-2.5 rounded px-2 py-1.5 ${DC.hover}`}>
+                <Avatar name={name} size={32} />
+                <span className="truncate text-[15px] font-medium text-[#949ba4]">{name}</span>
+                {name === username ? (
+                  <span className="ml-auto shrink-0 text-[10px] font-bold uppercase text-[#23a559]">you</span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : null}
+
+      {call && username ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setCall(null);
+          }}
+        >
+          <DialogContent className="max-w-3xl border-white/10 bg-[#2b2d31] text-[#dbdee1]">
+            <CallStage
+              callId={call.callId}
+              me={username}
+              label={call.label}
+              onLeave={() => setCall(null)}
+            />
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       <Dialog open={friendsOpen} onOpenChange={setFriendsOpen}>
         <DialogContent className="max-w-md">
-          <FriendsDialog currentUsername={username || null} onOpenDirectMessage={(targetUsername) => navigate(`/dm/${targetUsername}`)} />
+          <FriendsDialog
+            currentUsername={username}
+            onOpenDirectMessage={(targetUsername) => navigate(`/dm/${targetUsername}`)}
+          />
         </DialogContent>
       </Dialog>
     </div>

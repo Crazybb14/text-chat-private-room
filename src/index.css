@@ -127,3 +127,9 @@ html {
 
 ::selection { background: hsl(263 70% 50% / 0.35); }
 html { scroll-behavior: smooth; }
+
+/* Activity Galaxy star twinkle */
+@keyframes dc-twinkle {
+  from { opacity: 0.15; transform: scale(0.8); }
+  to { opacity: 0.9; transform: scale(1.15); }
+}

@@ -1,19 +1,25 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import UsernameClickMenu from "./UsernameClickMenu";
-import { fileKind, formatBytes, isFileApproved } from "@/lib/dmFiles";
-import { Clock, Download, File as FileIcon, FileText, Image as ImageIcon } from "lucide-react";
+import { Clock, Download, Film, Image as ImageIcon, Music, Paperclip } from "lucide-react";
+import UsernameClickMenu from "@/components/UsernameClickMenu";
+
+/** kept for existing consumers */
+export const usernameHue = nameColor;
+import { Avatar, DC, nameColor } from "@/components/DiscordShell";
+import { fileKind, formatBytes } from "@/lib/chatFiles";
+import { isFileApproved } from "@/lib/dmFiles";
+import { toMs } from "@/lib/activity";
 
 export interface ChatMessage {
   _row_id: number;
+  room_id: number;
   sender_name: string;
   content: string;
-  device_id: string | null;
-  _created_at: number;
+  _created_at: number | string;
   file_path?: string | null;
   file_name?: string | null;
   file_size?: number | null;
   mime_type?: string | null;
   file_status?: string | null;
+  is_ai?: number | null;
   [key: string]: unknown;
 }
 
@@ -22,90 +28,31 @@ interface MessageBubbleProps {
   isOwn: boolean;
   currentUsername: string;
   avatarUrl?: string;
-  /** Text size from the reader's personal settings. */
   fontSize?: number;
   showTimestamp?: boolean;
   compact?: boolean;
+  /** true when this continues the previous message from the same sender */
+  grouped?: boolean;
 }
 
-/** Stable hue per username so everyone's name reads consistently. */
-export function usernameHue(name: string): number {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) % 360;
-  }
-  return hash;
+function discordTime(ts: number | string): string {
+  const at = new Date(toMs(Number(ts) || 0));
+  if (Number.isNaN(at.getTime())) return "";
+  const now = new Date();
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (sameDay(at, now)) return `Today at ${time}`;
+  if (sameDay(at, yesterday)) return `Yesterday at ${time}`;
+  return `${at.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })} at ${time}`;
 }
 
-/** File shared in a chat: image preview, or a named card with a download. */
-const FileAttachment = ({ message }: { message: ChatMessage }) => {
-  const path = message.file_path ?? "";
-  const name = message.file_name || "file";
-  const kind = fileKind(message.mime_type || "");
-  const size =
-    typeof message.file_size === "number" && message.file_size > 0
-      ? formatBytes(message.file_size)
-      : null;
-
-  if (kind === "image" && path) {
-    return (
-      <a href={path} target="_blank" rel="noreferrer" className="block">
-        <img
-          src={`${path}?w=480`}
-          alt={name}
-          className="rounded-xl max-w-full max-h-72 object-cover"
-          loading="lazy"
-        />
-      </a>
-    );
-  }
-
-  return (
-    <a
-      href={path}
-      download={name}
-      target="_blank"
-      rel="noreferrer"
-      className="flex items-center gap-3 min-w-[180px] py-1 pr-2 hover:opacity-80 transition-opacity"
-    >
-      <span className="w-10 h-10 rounded-xl bg-black/15 flex items-center justify-center shrink-0">
-        {kind === "video" ? (
-          <ImageIcon className="w-5 h-5" />
-        ) : kind === "audio" ? (
-          <FileIcon className="w-5 h-5" />
-        ) : (
-          <FileText className="w-5 h-5" />
-        )}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-medium truncate">{name}</span>
-        {size && <span className="block text-xs opacity-70">{size}</span>}
-      </span>
-      <Download className="w-4 h-4 ml-auto shrink-0" />
-    </a>
-  );
-};
-
-/** A file that hasn't been approved yet — shown only to the person who sent it. */
-const PendingAttachment = ({ message }: { message: ChatMessage }) => {
-  const name = message.file_name || "file";
-  const size =
-    typeof message.file_size === "number" && message.file_size > 0
-      ? formatBytes(message.file_size)
-      : null;
-  return (
-    <div className="flex items-center gap-3 min-w-[180px] py-1 pr-2">
-      <span className="w-10 h-10 rounded-xl bg-black/15 flex items-center justify-center shrink-0">
-        <Clock className="w-5 h-5" />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-medium truncate">{name}</span>
-        <span className="block text-xs opacity-70">
-          {size ? `${size} · ` : ""}waiting for admin approval
-        </span>
-      </span>
-    </div>
-  );
+const AttachmentIcon = ({ kind }: { kind: string }) => {
+  if (kind === "image") return <ImageIcon className="h-6 w-6" aria-hidden />;
+  if (kind === "video") return <Film className="h-6 w-6" aria-hidden />;
+  if (kind === "audio") return <Music className="h-6 w-6" aria-hidden />;
+  return <Paperclip className="h-6 w-6" aria-hidden />;
 };
 
 const MessageBubble = ({
@@ -116,60 +63,109 @@ const MessageBubble = ({
   fontSize = 15,
   showTimestamp = true,
   compact = false,
+  grouped = false,
 }: MessageBubbleProps) => {
-  const time = new Date(message._created_at || Date.now()).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const initial = (message.sender_name || "?").charAt(0).toUpperCase();
-  const hue = usernameHue(message.sender_name || "x");
   const hasFile = Boolean(message.file_path);
-  const filePending = hasFile && !isFileApproved(message.file_status);
+  const approved = isFileApproved(message.file_status);
+  const isSystem = !message.sender_name || message.sender_name === "System";
+  const isAi = message.is_ai === 1;
 
-  // Nobody but the sender sees a file until an admin approves it.
-  if (filePending && !isOwn) return null;
+  // Files stay hidden from everyone but the sender until an admin approves them
+  if (hasFile && !approved && !isOwn) return null;
+
+  if (isSystem) {
+    return (
+      <div className={`flex items-center gap-2 py-1 pl-[72px] pr-12 text-[13px] ${DC.muted} hover:bg-[#2e3035]`}>
+        <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="min-w-0 break-words">{message.content}</span>
+      </div>
+    );
+  }
+
+  const kind = hasFile ? fileKind(String(message.mime_type ?? "")) : "other";
 
   return (
-    <div className={`flex items-end gap-2 ${compact ? "mb-1.5" : "mb-3"} ${isOwn ? "flex-row-reverse" : ""}`}>
-      {!isOwn && (
-        <Avatar className="w-8 h-8 border border-white/10 shrink-0">
-          {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
-          <AvatarFallback
-            className="text-xs font-semibold text-white"
-            style={{ background: `linear-gradient(135deg, hsl(${hue} 65% 45%), hsl(${(hue + 40) % 360} 65% 40%))` }}
-          >
-            {initial}
-          </AvatarFallback>
-        </Avatar>
+    <div
+      className={`group relative py-0.5 pr-6 hover:bg-[#2e3035] sm:pr-12 ${
+        grouped ? "pl-[72px]" : "mt-3 pl-4"
+      } ${compact ? "text-[13px]" : "text-[15px]"}`}
+    >
+      {!grouped && (
+        <span className="absolute left-4 top-0.5">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
+          ) : (
+            <Avatar name={message.sender_name} size={40} />
+          )}
+        </span>
       )}
-      <div className={`flex flex-col max-w-[75%] ${isOwn ? "items-end" : "items-start"}`}>
-        <div className="flex items-center gap-2 mb-1">
-          {isOwn ? (
-            <span className="text-xs font-semibold text-primary">You</span>
+      {!grouped && (
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          {isAi ? (
+            <span className="flex items-center gap-1 text-[15px] font-semibold text-[#5865f2]">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#5865f2] text-[10px] text-white">
+                AI
+              </span>
+              Assistant
+            </span>
           ) : (
-            <UsernameClickMenu target={message.sender_name} currentUsername={currentUsername} />
+            <UsernameClickMenu
+              target={message.sender_name}
+              currentUsername={currentUsername}
+              nameClassName="text-[15px]"
+              style={{ color: nameColor(message.sender_name) }}
+            />
           )}
-          {showTimestamp && <span className="text-[10px] text-muted-foreground">{time}</span>}
-        </div>
-        <div
-          style={{ fontSize: `${fontSize}px`, lineHeight: 1.45 }}
-          className={`px-4 py-2.5 rounded-2xl break-words shadow-sm ${
-            isOwn
-              ? "bg-primary text-primary-foreground rounded-br-md"
-              : "bg-secondary text-secondary-foreground rounded-bl-md"
-          } ${hasFile ? "p-2" : "whitespace-pre-wrap"}`}
-        >
-          {filePending ? (
-            <PendingAttachment message={message} />
-          ) : hasFile ? (
-            <FileAttachment message={message} />
-          ) : (
-            message.content
+          {showTimestamp && (
+            <span className={`text-[11px] ${DC.muted}`}>{discordTime(message._created_at)}</span>
           )}
-          {hasFile && message.content ? (
-            <p className="whitespace-pre-wrap px-2 pb-1 text-sm">{message.content}</p>
-          ) : null}
         </div>
+      )}
+      <div className="min-w-0 break-words leading-[1.375rem] text-[#dbdee1]" style={{ fontSize }}>
+        {message.content ? <p className="whitespace-pre-wrap">{message.content}</p> : null}
+
+        {hasFile && approved ? (
+          message.file_path ? (
+            <div className="mt-1 max-w-md overflow-hidden rounded-lg border border-black/30 bg-[#2b2d31]">
+              {kind === "image" ? (
+                <a href={message.file_path} target="_blank" rel="noreferrer">
+                  <img
+                    src={`${message.file_path}?w=480`}
+                    alt={message.file_name ?? "shared image"}
+                    className="max-h-72 w-full object-cover"
+                    loading="lazy"
+                  />
+                </a>
+              ) : null}
+              <div className="flex items-center gap-2.5 px-3 py-2">
+                <span className={`shrink-0 ${DC.muted}`}>
+                  <AttachmentIcon kind={kind} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-[#dbdee1]">{message.file_name}</span>
+                  <span className={`text-xs ${DC.muted}`}>{formatBytes(message.file_size ?? 0)}</span>
+                </span>
+                <a
+                  href={message.file_path}
+                  download={message.file_name ?? true}
+                  className="shrink-0 rounded p-1.5 text-[#949ba4] hover:bg-[#3f4147] hover:text-white"
+                  aria-label={`Download ${message.file_name ?? "file"}`}
+                >
+                  <Download className="h-4 w-4" aria-hidden />
+                </a>
+              </div>
+            </div>
+          ) : null
+        ) : null}
+
+        {hasFile && !approved ? (
+          <span className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-md bg-[#2b2d31] px-2 py-1 text-xs text-[#faa61a]">
+            <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="truncate">
+              Waiting for admin approval — only you can see this file until then.
+            </span>
+          </span>
+        ) : null}
       </div>
     </div>
   );

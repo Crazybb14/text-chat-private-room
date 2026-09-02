@@ -16,7 +16,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import db from "@/lib/shared/kliv-database.js";
@@ -30,6 +29,7 @@ import {
   useAppSettings,
 } from "@/lib/appSettings";
 import { isPresenceOnline } from "@/lib/presence";
+import { toMs } from "@/lib/activity";
 import { useUserPrefs } from "@/lib/userSettings";
 import { playMessageChime } from "@/lib/sound";
 import {
@@ -173,6 +173,7 @@ const DirectMessage = () => {
   const { settings } = useAppSettings();
   const maxMessageLength = Math.max(50, settingNumber(settings, "max_message_length") || 2000);
   const dmsAllowed = settingBool(settings, "allow_direct_messages");
+  const filesAllowed = settingBool(settings, "dm_file_sharing_enabled");
   const [targetOnline, setTargetOnline] = useState(false);
   const { prefs } = useUserPrefs(me);
 
@@ -355,8 +356,8 @@ const DirectMessage = () => {
   ].sort((a, b) => (a.row._created_at || 0) - (b.row._created_at || 0));
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      <header className="border-b border-white/5 shrink-0">
+    <div className="flex h-screen flex-col bg-[#313338] text-[#dbdee1]">
+      <header className="shrink-0 border-b border-black/25 shadow-[0_1px_0_rgba(0,0,0,0.2)]">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center gap-2">
           <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
             <ArrowLeft className="w-5 h-5" />
@@ -377,8 +378,8 @@ const DirectMessage = () => {
               )}
             </div>
             <div className="min-w-0">
-              <p className="font-bold truncate">{displayName}</p>
-              <p className="text-xs text-muted-foreground">@{target}</p>
+              <p className="truncate text-[15px] font-bold text-[#f2f3f5]">{displayName}</p>
+              <p className="text-xs text-[#949ba4]">@{target}</p>
             </div>
           </button>
           <div className="ml-auto flex items-center gap-1.5 shrink-0">
@@ -459,15 +460,15 @@ const DirectMessage = () => {
                       style={{ fontSize: `${prefs.font_size}px`, lineHeight: 1.45 }}
                       className={`px-4 py-2.5 rounded-2xl whitespace-pre-wrap break-words shadow-sm ${
                         isOwn
-                          ? "bg-primary text-primary-foreground rounded-br-md"
-                          : "bg-secondary text-secondary-foreground rounded-bl-md"
+                          ? "bg-[#5865f2] text-white rounded-br-md"
+                          : "bg-[#2b2d31] text-[#dbdee1] rounded-bl-md border border-black/30"
                       }`}
                     >
                       {item.row.content}
                     </div>
                     {prefs.timestamps && (
                       <span className={`text-[10px] text-muted-foreground mt-1 ${isOwn ? "text-right" : ""}`}>
-                        {new Date(item.row._created_at || Date.now()).toLocaleTimeString([], {
+                        {new Date(toMs(item.row._created_at || 0)).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
@@ -481,33 +482,38 @@ const DirectMessage = () => {
         </div>
       </div>
 
-      <div className="border-t border-white/5 shrink-0">
+      <div className="shrink-0">
         {uploading && (
-          <div className="max-w-2xl mx-auto px-4 pt-3 space-y-1.5">
-            <p className="text-xs text-muted-foreground truncate">Uploading {uploading.name}…</p>
+          <div className="mx-auto max-w-2xl space-y-1.5 px-4 pb-2 pt-3">
+            <p className="truncate text-xs text-[#949ba4]">Uploading {uploading.name}…</p>
             <Progress value={uploading.pct} className="h-1.5" />
           </div>
         )}
-        <form onSubmit={handleSend} className="max-w-2xl mx-auto px-4 py-3 flex gap-2 items-center">
+        <form
+          onSubmit={handleSend}
+          className="mx-4 mb-4 flex items-center gap-3 rounded-xl bg-[#383a40] px-4 py-2.5"
+        >
           <input
             ref={fileInputRef}
             type="file"
             className="hidden"
             onChange={(e) => void handleAttach(e.target.files?.[0])}
           />
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon"
             aria-label="Share a file"
             title="Share a file (private chats only)"
-            className="shrink-0"
-            disabled={!isFriend || !dmsAllowed || Boolean(uploading)}
+            className="shrink-0 rounded-full p-1.5 text-[#b5bac1] hover:bg-[#4e5058] hover:text-white disabled:opacity-40"
+            disabled={!isFriend || !dmsAllowed || !filesAllowed || Boolean(uploading)}
             onClick={() => fileInputRef.current?.click()}
           >
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
-          </Button>
-          <Input
+            {uploading ? (
+              <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+            ) : (
+              <Paperclip className="h-5 w-5" aria-hidden />
+            )}
+          </button>
+          <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -520,20 +526,26 @@ const DirectMessage = () => {
               !dmsAllowed
                 ? "Direct messages are off"
                 : isFriend
-                  ? `Message ${target}...`
-                  : "Friends only can message"
+                  ? `Message @${target}`
+                  : "Only friends can message"
             }
             disabled={!isFriend || !dmsAllowed}
             maxLength={maxMessageLength}
+            className="min-w-0 flex-1 bg-transparent py-1.5 text-[15px] text-[#dbdee1] outline-none placeholder:text-[#6d6f78]"
+            aria-label="Message"
           />
-          <Button
+          <button
             type="submit"
-            className="h-10 px-5 shrink-0"
+            aria-label="Send message"
+            className="shrink-0 rounded-full bg-[#5865f2] p-2 text-white hover:bg-[#4752c4] disabled:opacity-30"
             disabled={!isFriend || !dmsAllowed || sending || !input.trim()}
           >
-            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />}
-            Send
-          </Button>
+            {sending ? (
+              <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+            ) : (
+              <Send className="h-5 w-5" aria-hidden />
+            )}
+          </button>
         </form>
       </div>
 

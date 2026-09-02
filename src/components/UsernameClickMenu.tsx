@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
@@ -27,6 +27,10 @@ import { settingBool, useAppSettings } from "@/lib/appSettings";
 interface UsernameClickMenuProps {
   target: string;
   currentUsername: string;
+  /** optional classes for the username trigger (used by the chat rows) */
+  nameClassName?: string;
+  /** optional inline style for the trigger (e.g. name color) */
+  style?: CSSProperties;
 }
 
 const REPORT_REASONS = [
@@ -37,7 +41,7 @@ const REPORT_REASONS = [
   "Other",
 ];
 
-const UsernameClickMenu = ({ target, currentUsername }: UsernameClickMenuProps) => {
+const UsernameClickMenu = ({ target, currentUsername, nameClassName, style }: UsernameClickMenuProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { settings } = useAppSettings();
@@ -125,7 +129,10 @@ const UsernameClickMenu = ({ target, currentUsername }: UsernameClickMenuProps) 
     <>
       <DropdownMenu onOpenChange={(open) => open && loadRelationship()}>
         <DropdownMenuTrigger asChild>
-          <button className="text-xs font-semibold text-primary hover:underline text-left">
+          <button
+            className={`text-left font-semibold hover:underline ${nameClassName ?? "text-xs text-primary"}`}
+            style={style}
+          >
             {target}
           </button>
         </DropdownMenuTrigger>
