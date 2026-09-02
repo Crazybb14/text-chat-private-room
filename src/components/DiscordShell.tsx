@@ -17,17 +17,17 @@ import {
 
 /** Discord-style palette. Kept explicit so every page matches exactly. */
 export const DC = {
-  rail: "bg-[#1e1f22]",
-  side: "bg-[#2b2d31]",
-  chat: "bg-[#313338]",
-  input: "bg-[#383a40]",
+  rail: "bg-[var(--dc-rail)]",
+  side: "bg-[var(--dc-side)]",
+  chat: "bg-[var(--dc-chat)]",
+  input: "bg-[var(--dc-input)]",
   text: "text-[#dbdee1]",
   heading: "text-[#f2f3f5]",
   muted: "text-[#949ba4]",
-  line: "border-[#1e1f22]",
-  hover: "hover:bg-[#35373c]",
-  active: "bg-[#404249] text-white",
-  blurple: "bg-[#5865f2] hover:bg-[#4752c4]",
+  line: "border-[var(--dc-rail)]",
+  hover: "hover:bg-[var(--dc-hover)]",
+  active: "bg-[var(--dc-active)] text-white",
+  blurple: "bg-[var(--dc-accent)] hover:bg-[var(--dc-accent-hover)]",
 };
 
 const NAME_COLORS = ["#f23f43", "#f2782c", "#f7b427", "#3ba55c", "#21a3a3", "#3e7ff3", "#a855f7", "#eb459e"];
@@ -100,13 +100,13 @@ export function RoomSidebar(props: RoomSidebarProps) {
         type="button"
         onClick={() => props.onOpenRoom(room)}
         className={`group flex w-full items-center gap-1.5 rounded-[4px] px-2 py-1.5 text-left text-[15px] ${
-          active ? "bg-[#404249] text-white" : `text-[#949ba4] ${DC.hover} hover:text-[#dbdee1]`
+          active ? "bg-[var(--dc-active)] text-white" : `text-[#949ba4] ${DC.hover} hover:text-[#dbdee1]`
         }`}
       >
         <Icon className="h-5 w-5 shrink-0 text-[#80848e]" aria-hidden />
         <span className="truncate font-medium">{room.name}</span>
         {count && count > 0 ? (
-          <span className="ml-auto shrink-0 rounded-full bg-[#5865f2] px-1.5 py-0.5 text-[10px] font-bold text-white">
+          <span className="ml-auto shrink-0 rounded-full bg-[var(--dc-accent)] px-1.5 py-0.5 text-[10px] font-bold text-white">
             {count}
           </span>
         ) : null}
@@ -131,7 +131,7 @@ export function RoomSidebar(props: RoomSidebarProps) {
           onClick={props.onHome}
           className={`mt-2 flex w-full items-center gap-3 rounded-[4px] px-2 py-1.5 text-left text-[15px] font-medium ${
             props.activeRoomId === null || props.activeRoomId === undefined
-              ? "bg-[#404249] text-white"
+              ? "bg-[var(--dc-active)] text-white"
               : `text-[#949ba4] ${DC.hover} hover:text-[#dbdee1]`
           }`}
         >
@@ -167,7 +167,7 @@ export function RoomSidebar(props: RoomSidebarProps) {
           <button
             type="button"
             onClick={props.onCreateRoom}
-            className={`mt-3 flex w-full items-center gap-1.5 rounded-[4px] border border-dashed border-[#4e5058] px-2 py-2 text-left text-sm text-[#949ba4] ${DC.hover}`}
+            className={`mt-3 flex w-full items-center gap-1.5 rounded-[4px] border border-dashed border-[var(--dc-line)] px-2 py-2 text-left text-sm text-[#949ba4] ${DC.hover}`}
           >
             <Plus className="h-4 w-4" aria-hidden />
             Create a room

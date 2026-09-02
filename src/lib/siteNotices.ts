@@ -8,6 +8,8 @@ export interface VersionNotice {
   body: string;
   posted_by: string | null;
   posted_at: number;
+  /** "admin" notices describe admin-panel-only changes — users never see them */
+  audience?: string | null;
 }
 
 export interface AccountLockRow {
@@ -70,16 +72,25 @@ export function isActiveLock(lock: AccountLockRow): boolean {
   return lock.unlocked_at === null || lock.unlocked_at === undefined;
 }
 
+/** Only notices marked "public" (or unmarked) show up for regular users. */
+export function isPublicNotice(notice: VersionNotice): boolean {
+  return String(notice.audience ?? "public") !== "admin";
+}
+
 // ---------------------------------------------------------------------------
 // Reads (public data)
 // ---------------------------------------------------------------------------
 
-export async function getNotices(limit = 20): Promise<VersionNotice[]> {
+export async function getNotices(
+  limit = 20,
+  opts: { includeAdminOnly?: boolean } = {}
+): Promise<VersionNotice[]> {
   try {
-    return await db.query<VersionNotice>("version_notices", {
+    const rows = await db.query<VersionNotice>("version_notices", {
       order: "posted_at.desc",
       limit,
     });
+    return opts.includeAdminOnly ? rows : rows.filter(isPublicNotice);
   } catch {
     return [];
   }
@@ -166,7 +177,7 @@ async function control(payload: Record<string, unknown>): Promise<ControlResult>
 }
 
 export async function postNotice(
-  input: { version: string; title: string; body: string },
+  input: { version: string; title: string; body: string; audience?: "public" | "admin" },
   auth?: AdminAuth
 ): Promise<ControlResult> {
   return control({ action: "post-notice", ...input, ...authParams(auth) });

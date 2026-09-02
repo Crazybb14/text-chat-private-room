@@ -20,13 +20,13 @@ scenario(
     });
 
     await step('alex sends sam a friend request', async () => {
-      await users.alex.page.getByRole('button', { name: 'Friends' }).click();
+      await users.alex.page.getByRole('button', { name: 'Friends', exact: true }).click();
       await users.alex.page.getByPlaceholder('Search by name or username...').fill('dmsam');
       await users.alex.page.getByRole('button', { name: 'Add dmsam as a friend' }).click();
     });
 
     await step('sam accepts the request', async () => {
-      await users.sam.page.getByRole('button', { name: 'Friends' }).click();
+      await users.sam.page.getByRole('button', { name: 'Friends', exact: true }).click();
       await users.sam.page.getByRole('button', { name: /Requests/ }).click();
       await users.sam.page.getByRole('button', { name: 'Accept dmalex' }).click();
       await users.sam.page.getByRole('button', { name: 'Friends (1)' }).click();

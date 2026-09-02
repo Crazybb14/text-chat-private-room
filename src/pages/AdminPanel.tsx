@@ -80,6 +80,9 @@ import AdminDirectMessages from "@/components/AdminDirectMessages";
 import AdminFiles from "@/components/AdminFiles";
 import AdminNotifications from "@/components/AdminNotifications";
 import AdminVersionNotices from "@/components/AdminVersionNotices";
+import AdminTheme from "@/components/AdminTheme";
+import AdminOnlineNow from "@/components/AdminOnlineNow";
+import AdminHealth from "@/components/AdminHealth";
 import AdminManagers, { MakeAdminDialog } from "@/components/AdminManagers";
 import {
   getActiveLocks,
@@ -982,6 +985,7 @@ const AdminPanel = () => {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             {can("rooms") && <TabsTrigger value="rooms">Rooms</TabsTrigger>}
             {can("live") && <TabsTrigger value="live">Live</TabsTrigger>}
+            {can("live") && <TabsTrigger value="online">Online Now</TabsTrigger>}
             {can("calls") && (
               <TabsTrigger value="calls">
                 Calls {calls.length > 0 && <Badge className="ml-1 h-4 px-1.5">{calls.length}</Badge>}
@@ -1009,6 +1013,8 @@ const AdminPanel = () => {
             {can("notifications") && <TabsTrigger value="notifications">Notifications</TabsTrigger>}
             {can("notifications") && <TabsTrigger value="updates">Updates</TabsTrigger>}
             {can("downtime") && <TabsTrigger value="downtime">Downtime</TabsTrigger>}
+            {can("settings") && <TabsTrigger value="theme">Theme</TabsTrigger>}
+            {can("settings") && <TabsTrigger value="health">Health</TabsTrigger>}
             {can("settings") && <TabsTrigger value="settings">Settings</TabsTrigger>}
             {isOwner && <TabsTrigger value="download">Download</TabsTrigger>}
             {settingBool(settings, "ai_beta_enabled") && <TabsTrigger value="ai">AI (beta)</TabsTrigger>}
@@ -2131,6 +2137,21 @@ const AdminPanel = () => {
           {/* AI (beta) */}
           <TabsContent value="ai" className="space-y-4 mt-4">
             <AdminAI />
+          </TabsContent>
+
+          {/* ONLINE NOW — who's on the site this minute */}
+          <TabsContent value="online" className="space-y-4 mt-4">
+            {can("live") ? <AdminOnlineNow /> : NoPermission}
+          </TabsContent>
+
+          {/* THEME — the site's color of the day */}
+          <TabsContent value="theme" className="space-y-4 mt-4">
+            {can("settings") ? <AdminTheme /> : NoPermission}
+          </TabsContent>
+
+          {/* HEALTH — quick is-everything-working check */}
+          <TabsContent value="health" className="space-y-4 mt-4">
+            {can("settings") ? <AdminHealth /> : NoPermission}
           </TabsContent>
 
           {/* APPEALS — ban appeals review */}

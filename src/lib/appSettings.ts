@@ -413,6 +413,23 @@ export const SETTING_DEFS: SettingDef[] = [
     default: "violet",
     description: "Site accent color: violet, blue, emerald, rose, or amber.",
   },
+  {
+    key: "theme_color",
+    label: "Site color of the day",
+    group: "Site",
+    type: "text",
+    default: "#3e6bd6",
+    description:
+      "A hex color (like #3e6bd6) that tints the whole site's background. Pick it from the admin Theme tab.",
+  },
+  {
+    key: "theme_mode",
+    label: "Theme rotation",
+    group: "Site",
+    type: "text",
+    default: "manual",
+    description: "manual = keep the picked color until you change it; daily = a new color automatically every day.",
+  },
 ];
 
 // The bannable-word list now lives in @/lib/moderation (tiered, with

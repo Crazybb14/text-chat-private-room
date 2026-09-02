@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { BellRing, History, Loader2, Send, Trash2 } from "lucide-react";
+import { BellRing, EyeOff, History, Loader2, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,7 @@ const AdminVersionNotices = ({
   const [version, setVersion] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [adminOnly, setAdminOnly] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [reloadMessage, setReloadMessage] = useState("");
@@ -49,7 +50,10 @@ const AdminVersionNotices = ({
   const auth = isOwner ? undefined : { adminUsername, adminPassword: password };
 
   const load = useCallback(async () => {
-    const [noticeRows, reloadState] = await Promise.all([getNotices(), getReloadState()]);
+    const [noticeRows, reloadState] = await Promise.all([
+      getNotices(50, { includeAdminOnly: true }),
+      getReloadState(),
+    ]);
     setNotices(noticeRows);
     setReload(reloadState);
     setVersion((current) => current || nextVersion(noticeRows[0]?.version));
@@ -70,14 +74,24 @@ const AdminVersionNotices = ({
     }
     setBusy(true);
     try {
-      const result = await postNotice({ version: version.trim(), title: title.trim(), body: body.trim() }, auth);
+      const result = await postNotice(
+        {
+          version: version.trim(),
+          title: title.trim(),
+          body: body.trim(),
+          audience: adminOnly ? "admin" : "public",
+        },
+        auth
+      );
       if (result.error) {
         toast({ title: "Couldn't post the notice", description: result.error, variant: "destructive" });
         return;
       }
       toast({
         title: `Version ${version.trim()} posted`,
-        description: "It's now in the What's-new widget on the main site.",
+        description: adminOnly
+          ? "Posted for admins only — users won't see it."
+          : "It's now in the What's-new widget on the main site.",
       });
       setBody("");
       setTitle("");
@@ -143,8 +157,8 @@ const AdminVersionNotices = ({
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">
             Nothing posts automatically. You write each notice and press Post — it then appears in
-            the “What’s new” widget on the main site. Leave out anything you changed only here in
-            the admin panel.
+            the “What’s new” widget on the main site. For changes that only affect this admin
+            panel, tick “Admins only” and users will never see them.
           </p>
           <div className="grid gap-3 sm:grid-cols-[140px_1fr]">
             <div className="space-y-1">
@@ -180,6 +194,20 @@ const AdminVersionNotices = ({
               maxLength={4000}
             />
           </div>
+          <label
+            htmlFor="notice-admin-only"
+            className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
+          >
+            <input
+              id="notice-admin-only"
+              type="checkbox"
+              checked={adminOnly}
+              onChange={(e) => setAdminOnly(e.target.checked)}
+              className="h-4 w-4 accent-primary"
+            />
+            <EyeOff className="h-4 w-4 text-muted-foreground" aria-hidden />
+            Admins only — hide this notice from users
+          </label>
           {!isOwner && (
             <div className="space-y-1 max-w-xs">
               <Label htmlFor="notice-admin-pw">Your admin password</Label>
@@ -249,6 +277,11 @@ const AdminVersionNotices = ({
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="secondary" className="font-mono">v{notice.version}</Badge>
+                  {String(notice.audience ?? "public") === "admin" && (
+                    <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-500">
+                      <EyeOff className="h-3 w-3" aria-hidden /> admins only
+                    </Badge>
+                  )}
                   {notice.title && <span className="text-sm font-medium">{notice.title}</span>}
                   <span className="text-xs text-muted-foreground">
                     {new Date((notice.posted_at || 0) * 1000).toLocaleDateString()} · by{" "}

@@ -50,7 +50,7 @@ scenario(
     });
 
     await step('signing out returns to the login page', async () => {
-      await page.getByRole('button', { name: 'Back to rooms' }).click();
+      await page.getByRole('button', { name: 'Home' }).click();
       await page.getByRole('button', { name: 'Sign out' }).click();
       await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
     });

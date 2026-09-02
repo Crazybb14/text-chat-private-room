@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+/* Site theme surfaces. Defaults match Discord's dark grays; the daily color
+   an admin picks rewrites these on <html> so the whole site follows along. */
+:root {
+  --dc-rail: #1e1f22;
+  --dc-side: #2b2d31;
+  --dc-chat: #313338;
+  --dc-input: #383a40;
+  --dc-hover: #35373c;
+  --dc-active: #404249;
+  --dc-line: #4e5058;
+  --dc-msg-hover: #2e3035;
+  --dc-accent: #5865f2;
+  --dc-accent-hover: #4752c4;
+  color-scheme: dark;
+}
+
 @theme inline {
   --color-background: hsl(240 10% 3.9%);
   --color-foreground: hsl(0 0% 98%);

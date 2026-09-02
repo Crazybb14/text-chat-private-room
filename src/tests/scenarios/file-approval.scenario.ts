@@ -109,10 +109,10 @@ scenario(
     });
 
     await step('the two become friends so they can private message', async () => {
-      await alex.getByRole('button', { name: 'Friends' }).click();
+      await alex.getByRole('button', { name: 'Friends and direct messages' }).click();
       await alex.getByPlaceholder('Search by name or username...').fill('filesam');
       await alex.getByRole('button', { name: 'Add filesam as a friend' }).click();
-      await sam.getByRole('button', { name: 'Friends' }).click();
+      await sam.getByRole('button', { name: 'Friends and direct messages' }).click();
       await sam.getByRole('button', { name: /Requests/ }).click();
       await sam.getByRole('button', { name: 'Accept filealex' }).click();
     });

@@ -54,6 +54,7 @@ import {
 } from "@/lib/presence";
 import { isOwnerSession } from "@/lib/owner";
 import { splitLobbyRooms, type RoomKindRow } from "@/lib/roomTypes";
+import { useSiteTheme } from "@/lib/siteTheme";
 import { getActiveCalls, getCallParticipants, participantPresent } from "@/lib/calls";
 import { useUserPrefs } from "@/lib/userSettings";
 import { functions } from "@/lib/shared/kliv-functions.js";
@@ -84,6 +85,8 @@ const Index = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { settings } = useAppSettings();
+  // Follow the admin's color of the day on the main page too.
+  useSiteTheme(settings);
   const [phase, setPhase] = useState<Phase>("loading");
   const [session, setSession] = useState<SessionInfo | null>(null);
 
@@ -530,8 +533,8 @@ const Index = () => {
     : publicRooms;
 
   return (
-    <div className="min-h-screen bg-[#313338] text-[#dbdee1]">
-      <div className="flex h-screen overflow-hidden">
+    <div className="min-h-dvh bg-[var(--dc-chat)] text-[#dbdee1]">
+      <div className="flex h-dvh overflow-hidden">
       <aside className="hidden w-60 shrink-0 md:flex">
         <RoomSidebar
           siteName={siteName}
@@ -605,7 +608,7 @@ const Index = () => {
               aria-label="Friends"
               title="Friends"
               onClick={() => setFriendsOpen(true)}
-              className="rounded p-2 text-[#b5bac1] hover:bg-[#35373c] hover:text-white"
+              className="rounded p-2 text-[#b5bac1] hover:bg-[var(--dc-hover)] hover:text-white"
             >
               <Users className="h-5 w-5" />
             </button>
@@ -614,7 +617,7 @@ const Index = () => {
               aria-label="Settings"
               title="Settings"
               onClick={() => navigate("/settings")}
-              className="rounded p-2 text-[#b5bac1] hover:bg-[#35373c] hover:text-white"
+              className="rounded p-2 text-[#b5bac1] hover:bg-[var(--dc-hover)] hover:text-white"
             >
               <SettingsIcon className="h-5 w-5" />
             </button>
@@ -623,7 +626,7 @@ const Index = () => {
               aria-label="Admin"
               title="Admin"
               onClick={handleAdminClick}
-              className="rounded p-2 text-[#b5bac1] hover:bg-[#35373c] hover:text-white"
+              className="rounded p-2 text-[#b5bac1] hover:bg-[var(--dc-hover)] hover:text-white"
             >
               <Shield className="h-5 w-5" />
             </button>
@@ -632,14 +635,14 @@ const Index = () => {
               aria-label="Sign out"
               title="Sign out"
               onClick={handleSignOut}
-              className="rounded p-2 text-[#b5bac1] hover:bg-[#35373c] hover:text-[#f23f43]"
+              className="rounded p-2 text-[#b5bac1] hover:bg-[var(--dc-hover)] hover:text-[#f23f43]"
             >
               <LogOut className="h-5 w-5" />
             </button>
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
+        <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
         {announcement && (
           <Card className="border-primary/30 bg-primary/5">
             <CardContent className="py-3.5 flex items-start gap-3">
@@ -673,7 +676,7 @@ const Index = () => {
 
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight">
+            <h1 className="text-3xl font-bold tracking-tight">
               Hey, <span className="bg-gradient-to-r from-primary to-indigo-400 bg-clip-text text-transparent">{username}</span>
             </h1>
             <p className="text-muted-foreground text-sm mt-1">

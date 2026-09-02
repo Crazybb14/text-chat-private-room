@@ -30,6 +30,7 @@ import {
 } from "@/lib/appSettings";
 import { isPresenceOnline } from "@/lib/presence";
 import { toMs } from "@/lib/activity";
+import { useSiteTheme } from "@/lib/siteTheme";
 import { useUserPrefs } from "@/lib/userSettings";
 import { playMessageChime } from "@/lib/sound";
 import {
@@ -171,6 +172,8 @@ const DirectMessage = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { settings } = useAppSettings();
+  // Follow the admin's color of the day in private chats too.
+  useSiteTheme(settings);
   const maxMessageLength = Math.max(50, settingNumber(settings, "max_message_length") || 2000);
   const dmsAllowed = settingBool(settings, "allow_direct_messages");
   const filesAllowed = settingBool(settings, "dm_file_sharing_enabled");
@@ -356,7 +359,7 @@ const DirectMessage = () => {
   ].sort((a, b) => (a.row._created_at || 0) - (b.row._created_at || 0));
 
   return (
-    <div className="flex h-screen flex-col bg-[#313338] text-[#dbdee1]">
+    <div className="flex h-dvh flex-col bg-[var(--dc-chat)] text-[#dbdee1]">
       <header className="shrink-0 border-b border-black/25 shadow-[0_1px_0_rgba(0,0,0,0.2)]">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center gap-2">
           <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
@@ -460,8 +463,8 @@ const DirectMessage = () => {
                       style={{ fontSize: `${prefs.font_size}px`, lineHeight: 1.45 }}
                       className={`px-4 py-2.5 rounded-2xl whitespace-pre-wrap break-words shadow-sm ${
                         isOwn
-                          ? "bg-[#5865f2] text-white rounded-br-md"
-                          : "bg-[#2b2d31] text-[#dbdee1] rounded-bl-md border border-black/30"
+                          ? "bg-[var(--dc-accent)] text-white rounded-br-md"
+                          : "bg-[var(--dc-side)] text-[#dbdee1] rounded-bl-md border border-black/30"
                       }`}
                     >
                       {item.row.content}
@@ -491,7 +494,7 @@ const DirectMessage = () => {
         )}
         <form
           onSubmit={handleSend}
-          className="mx-4 mb-4 flex items-center gap-3 rounded-xl bg-[#383a40] px-4 py-2.5"
+          className="mx-4 mb-4 flex items-center gap-3 rounded-xl bg-[var(--dc-input)] px-4 py-2.5"
         >
           <input
             ref={fileInputRef}
@@ -503,7 +506,7 @@ const DirectMessage = () => {
             type="button"
             aria-label="Share a file"
             title="Share a file (private chats only)"
-            className="shrink-0 rounded-full p-1.5 text-[#b5bac1] hover:bg-[#4e5058] hover:text-white disabled:opacity-40"
+            className="shrink-0 rounded-full p-1.5 text-[#b5bac1] hover:bg-[var(--dc-active)] hover:text-white disabled:opacity-40"
             disabled={!isFriend || !dmsAllowed || !filesAllowed || Boolean(uploading)}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -537,7 +540,7 @@ const DirectMessage = () => {
           <button
             type="submit"
             aria-label="Send message"
-            className="shrink-0 rounded-full bg-[#5865f2] p-2 text-white hover:bg-[#4752c4] disabled:opacity-30"
+            className="shrink-0 rounded-full bg-[var(--dc-accent)] p-2 text-white hover:bg-[var(--dc-accent-hover)] disabled:opacity-30"
             disabled={!isFriend || !dmsAllowed || sending || !input.trim()}
           >
             {sending ? (

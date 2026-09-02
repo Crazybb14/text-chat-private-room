@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   isActiveLock,
+  isPublicNotice,
   isValidVersion,
   nextVersion,
   shouldShowReload,
   type AccountLockRow,
+  type VersionNotice,
 } from "./siteNotices";
 
 const lock = (over: Partial<AccountLockRow> = {}): AccountLockRow => ({
@@ -77,5 +79,20 @@ describe("isActiveLock", () => {
 
   it("treats an unlocked row as inactive", () => {
     expect(isActiveLock(lock({ unlocked_at: 2000 }))).toBe(false);
+  });
+});
+
+// @kliv-spec-derived — from user intent: "the version shouldn't show
+// anything that was added to the admin panel" — only public notices count
+// for regular users.
+describe("isPublicNotice", () => {
+  it("treats unmarked and public notices as user-visible", () => {
+    expect(isPublicNotice({ audience: "public" } as VersionNotice)).toBe(true);
+    expect(isPublicNotice({ audience: null } as VersionNotice)).toBe(true);
+    expect(isPublicNotice({} as VersionNotice)).toBe(true);
+  });
+
+  it("hides notices marked for admins", () => {
+    expect(isPublicNotice({ audience: "admin" } as VersionNotice)).toBe(false);
   });
 });

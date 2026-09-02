@@ -75,7 +75,7 @@ const MessageBubble = ({
 
   if (isSystem) {
     return (
-      <div className={`flex items-center gap-2 py-1 pl-[72px] pr-12 text-[13px] ${DC.muted} hover:bg-[#2e3035]`}>
+      <div className={`flex items-center gap-2 py-1 pl-[72px] pr-12 text-[13px] ${DC.muted} hover:bg-[var(--dc-msg-hover)]`}>
         <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
         <span className="min-w-0 break-words">{message.content}</span>
       </div>
@@ -84,10 +84,14 @@ const MessageBubble = ({
 
   const kind = hasFile ? fileKind(String(message.mime_type ?? "")) : "other";
 
+  // Discord layout: every row keeps the same 72px gutter so message text
+  // lines up in one column. The avatar sits inside that gutter on the first
+  // message of a group; follow-ups skip it. This is what stops the text from
+  // colliding with the profile picture.
   return (
     <div
-      className={`group relative py-0.5 pr-6 hover:bg-[#2e3035] sm:pr-12 ${
-        grouped ? "pl-[72px]" : "mt-3 pl-4"
+      className={`group relative py-0.5 pl-[72px] pr-6 hover:bg-[var(--dc-msg-hover)] sm:pr-12 ${
+        grouped ? "" : "mt-3"
       } ${compact ? "text-[13px]" : "text-[15px]"}`}
     >
       {!grouped && (
@@ -102,8 +106,8 @@ const MessageBubble = ({
       {!grouped && (
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
           {isAi ? (
-            <span className="flex items-center gap-1 text-[15px] font-semibold text-[#5865f2]">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#5865f2] text-[10px] text-white">
+            <span className="flex items-center gap-1 text-[15px] font-semibold text-[var(--dc-accent)]">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--dc-accent)] text-[10px] text-white">
                 AI
               </span>
               Assistant
@@ -121,12 +125,15 @@ const MessageBubble = ({
           )}
         </div>
       )}
-      <div className="min-w-0 break-words leading-[1.375rem] text-[#dbdee1]" style={{ fontSize }}>
+      <div
+        className={`min-w-0 break-words leading-[1.375rem] text-[#dbdee1] ${grouped ? "" : "mt-0.5"}`}
+        style={{ fontSize }}
+      >
         {message.content ? <p className="whitespace-pre-wrap">{message.content}</p> : null}
 
         {hasFile && approved ? (
           message.file_path ? (
-            <div className="mt-1 max-w-md overflow-hidden rounded-lg border border-black/30 bg-[#2b2d31]">
+            <div className="mt-1 max-w-md overflow-hidden rounded-lg border border-black/30 bg-[var(--dc-side)]">
               {kind === "image" ? (
                 <a href={message.file_path} target="_blank" rel="noreferrer">
                   <img
@@ -148,7 +155,7 @@ const MessageBubble = ({
                 <a
                   href={message.file_path}
                   download={message.file_name ?? true}
-                  className="shrink-0 rounded p-1.5 text-[#949ba4] hover:bg-[#3f4147] hover:text-white"
+                  className="shrink-0 rounded p-1.5 text-[#949ba4] hover:bg-[var(--dc-active)] hover:text-white"
                   aria-label={`Download ${message.file_name ?? "file"}`}
                 >
                   <Download className="h-4 w-4" aria-hidden />
@@ -159,10 +166,11 @@ const MessageBubble = ({
         ) : null}
 
         {hasFile && !approved ? (
-          <span className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-md bg-[#2b2d31] px-2 py-1 text-xs text-[#faa61a]">
+          <span className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-md bg-[var(--dc-side)] px-2 py-1 text-xs text-[#faa61a]">
             <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
             <span className="truncate">
-              Waiting for admin approval — only you can see this file until then.
+              <span className="font-medium text-[#dbdee1]">{message.file_name}</span> — waiting
+              for admin approval. Only you can see this until then.
             </span>
           </span>
         ) : null}

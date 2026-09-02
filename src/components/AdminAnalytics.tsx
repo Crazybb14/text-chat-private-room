@@ -227,7 +227,7 @@ const AdminAnalytics = () => {
                       <span className="w-32 shrink-0 truncate text-sm">{room.name}</span>
                       <div className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/5">
                         <div
-                          className="h-full rounded-full bg-[#5865f2]"
+                          className="h-full rounded-full bg-[var(--dc-accent)]"
                           style={{ width: `${Math.min(100, (room.messages / (data.topRooms[0]?.messages || 1)) * 100)}%` }}
                         />
                       </div>

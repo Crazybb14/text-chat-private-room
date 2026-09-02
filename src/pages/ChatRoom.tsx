@@ -57,6 +57,7 @@ import {
 } from "@/lib/calls";
 import { isOwnerSession } from "@/lib/owner";
 import { isVoiceRoom } from "@/lib/roomTypes";
+import { useSiteTheme } from "@/lib/siteTheme";
 import { useUserPrefs } from "@/lib/userSettings";
 import { playMessageChime } from "@/lib/sound";
 import { uploadRoomFile, validateChatFile } from "@/lib/chatFiles";
@@ -84,6 +85,8 @@ const ChatRoom = () => {
   const navVoice = (useLocation().state as { voice?: boolean } | null)?.voice === true;
   const { toast } = useToast();
   const { settings } = useAppSettings();
+  // Follow the admin's color of the day everywhere in the room.
+  useSiteTheme(settings);
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [room, setRoom] = useState<RoomRow | null>(null);
@@ -642,7 +645,7 @@ const ChatRoom = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#313338] text-[#dbdee1]">
+    <div className="flex h-dvh overflow-hidden bg-[var(--dc-chat)] text-[#dbdee1]">
       <aside className="hidden w-60 shrink-0 md:flex">
         <RoomSidebar {...sidebarProps} />
       </aside>
@@ -703,7 +706,7 @@ const ChatRoom = () => {
               <button
                 type="button"
                 onClick={activeCall ? handleJoinCall : () => void handleStartCall()}
-                className="hidden items-center gap-1.5 rounded bg-transparent px-2 py-1.5 text-sm font-medium text-[#b5bac1] hover:bg-[#35373c] hover:text-white sm:flex"
+                className="hidden items-center gap-1.5 rounded bg-transparent px-2 py-1.5 text-sm font-medium text-[#b5bac1] hover:bg-[var(--dc-hover)] hover:text-white sm:flex"
               >
                 <Phone className="h-4 w-4" aria-hidden />
                 {call ? "Leave call" : activeCall ? `Join call (${callCount})` : "Start call"}
@@ -713,7 +716,7 @@ const ChatRoom = () => {
             <button
               type="button"
               onClick={() => setFriendsOpen(true)}
-              className="rounded p-2 text-[#b5bac1] hover:bg-[#35373c] hover:text-white"
+              className="rounded p-2 text-[#b5bac1] hover:bg-[var(--dc-hover)] hover:text-white"
               aria-label="Friends and direct messages"
               title="Friends & DMs"
             >
@@ -723,9 +726,9 @@ const ChatRoom = () => {
         </header>
 
         {announcement ? (
-          <div className="shrink-0 border-b border-black/30 bg-[#5865f2]/15 px-4 py-2 text-center text-sm text-[#dbdee1]">
+          <div className="shrink-0 border-b border-black/30 bg-[var(--dc-accent)]/15 px-4 py-2 text-center text-sm text-[#dbdee1]">
             <span className="inline-flex items-center gap-2">
-              <Megaphone className="h-4 w-4 shrink-0 text-[#7983f5]" aria-hidden />
+              <Megaphone className="h-4 w-4 shrink-0 text-[var(--dc-accent)]" aria-hidden />
               {announcement}
             </span>
           </div>
@@ -760,7 +763,7 @@ const ChatRoom = () => {
                       onClick={() => void handleStartCall()}
                       className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-400"
                     >
-                      <Mic className="h-4 w-4" aria-hidden /> Start talking
+                      <Mic className="h-4 w-4" aria-hidden /> Start the call
                     </button>
                   </>
                 )}
@@ -774,7 +777,7 @@ const ChatRoom = () => {
                   <p className="col-span-full text-sm text-[#949ba4]">Nobody else is here yet.</p>
                 ) : (
                   onlineNames.map((name) => (
-                    <div key={name} className="flex items-center gap-2.5 rounded-lg bg-[#2b2d31] px-3 py-2">
+                    <div key={name} className="flex items-center gap-2.5 rounded-lg bg-[var(--dc-side)] px-3 py-2">
                       <Avatar name={name} size={32} />
                       <span className="truncate text-sm font-medium text-[#dbdee1]">{name}</span>
                     </div>
@@ -782,9 +785,11 @@ const ChatRoom = () => {
                 )}
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-[#2b2d31] px-5 py-6 text-center">
+              <div className="rounded-xl border border-white/10 bg-[var(--dc-side)] px-5 py-6 text-center">
                 <MessageSquareOff className="mx-auto h-7 w-7 text-[#80848e]" aria-hidden />
-                <p className="mt-2 text-sm font-semibold text-[#f2f3f5]">Voice-only room — no text chat</p>
+                <p className="mt-2 text-sm font-semibold text-[#f2f3f5]">
+                  This is a voice room — there's no text chat here
+                </p>
                 <p className="mt-1 text-sm text-[#949ba4]">
                   This room is for talking. Use a text room or a direct message to type.
                 </p>
@@ -834,12 +839,12 @@ const ChatRoom = () => {
               </div>
             </div>
 
-            <div className="shrink-0 px-4 pb-5">
+            <div className="shrink-0 px-4 pb-3">
               <form
                 onSubmit={(e) => {
                   void handleSend(e);
                 }}
-                className="flex items-end gap-3 rounded-xl bg-[#383a40] px-4 py-2.5"
+                className="flex items-end gap-3 rounded-xl bg-[var(--dc-input)] px-4 py-2.5"
               >
                 {settingBool(settings, "public_room_file_sharing") && slowLeft <= 0 ? (
                   <button
@@ -848,7 +853,7 @@ const ChatRoom = () => {
                     disabled={sending}
                     title="Attach a file (an admin approves it before others can see it)"
                     aria-label="Attach a file"
-                    className="shrink-0 rounded-full p-1.5 text-[#b5bac1] hover:bg-[#4e5058] hover:text-white disabled:opacity-40"
+                    className="shrink-0 rounded-full p-1.5 text-[#b5bac1] hover:bg-[var(--dc-active)] hover:text-white disabled:opacity-40"
                   >
                     <Paperclip className="h-5 w-5" aria-hidden />
                   </button>
@@ -858,6 +863,12 @@ const ChatRoom = () => {
                   onChange={(e) => {
                     setInput(e.target.value);
                     syncTyping(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleSend();
+                    }
                   }}
                   onBlur={() => syncTyping("", true)}
                   placeholder={slowLeft > 0 ? `Slow mode — wait ${slowLeft}s` : `Message #${room.name}`}
@@ -870,7 +881,7 @@ const ChatRoom = () => {
                 <button
                   type="submit"
                   disabled={sending || !input.trim()}
-                  className="shrink-0 rounded-full p-1.5 text-[#b5bac1] hover:bg-[#4e5058] hover:text-white disabled:opacity-30"
+                  className="shrink-0 rounded-full p-1.5 text-[#b5bac1] hover:bg-[var(--dc-active)] hover:text-white disabled:opacity-30"
                   aria-label="Send message"
                 >
                   {sending ? (
@@ -892,7 +903,7 @@ const ChatRoom = () => {
               </div>
               {uploadPct !== null ? (
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-black/30">
-                  <div className="h-full rounded-full bg-[#5865f2] transition-all" style={{ width: `${uploadPct}%` }} />
+                  <div className="h-full rounded-full bg-[var(--dc-accent)] transition-all" style={{ width: `${uploadPct}%` }} />
                 </div>
               ) : null}
             </div>
@@ -912,7 +923,7 @@ const ChatRoom = () => {
       </main>
 
       {showOnline && !isVoice ? (
-        <aside className="hidden w-60 shrink-0 flex-col bg-[#2b2d31] lg:flex">
+        <aside className="hidden w-56 shrink-0 flex-col bg-[var(--dc-side)] lg:flex">
           <h2 className="px-4 pb-2 pt-4 text-[11px] font-bold uppercase tracking-wide text-[#949ba4]">
             In this room — {onlineNames.length}
           </h2>
@@ -937,7 +948,7 @@ const ChatRoom = () => {
             if (!open) setCall(null);
           }}
         >
-          <DialogContent className="max-w-3xl border-white/10 bg-[#2b2d31] text-[#dbdee1]">
+          <DialogContent className="max-w-3xl border-white/10 bg-[var(--dc-side)] text-[#dbdee1]">
             <CallStage
               callId={call.callId}
               me={username}
