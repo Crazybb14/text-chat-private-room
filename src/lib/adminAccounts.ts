@@ -11,6 +11,9 @@ export const ADMIN_ABILITIES = [
   { key: "notifications", label: "Send notifications", description: "Broadcast announcements to everyone" },
   { key: "downtime", label: "Downtime", description: "Take the site down for maintenance" },
   { key: "settings", label: "Site settings", description: "Change site-wide settings" },
+  { key: "polls", label: "Polls", description: "Create polls and see live results" },
+  { key: "social", label: "Friends & bios", description: "See friendships and clear profile bios" },
+  { key: "analytics", label: "Analytics", description: "Usage charts, leaderboards, and trends" },
 ] as const;
 
 export type AbilityKey = (typeof ADMIN_ABILITIES)[number]["key"];

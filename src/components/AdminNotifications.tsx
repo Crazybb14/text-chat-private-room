@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { recentAnnouncements, sendAnnouncement, type SiteNotification } from "@/lib/notifications";
+import { createImportantNotice } from "@/lib/importantNotices";
 
 const fmtTime = (value: number) =>
   value
@@ -23,6 +25,7 @@ const AdminNotifications = () => {
   const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
+  const [important, setImportant] = useState(false);
   const [sending, setSending] = useState(false);
   const [history, setHistory] = useState<SiteNotification[]>([]);
 
@@ -43,9 +46,21 @@ const AdminNotifications = () => {
     setSending(true);
     try {
       const count = await sendAnnouncement(title, message);
+      let bannerNote = "";
+      if (important) {
+        try {
+          await createImportantNotice(title, message, "admin");
+          bannerNote = " The big on-screen banner is live on every screen.";
+        } catch {
+          bannerNote = " (The big banner couldn't be posted — try the Important Notices tab.)";
+        }
+      }
       toast({
         title: "Notification sent",
-        description: count > 0 ? `Delivered to ${count} account${count === 1 ? "" : "s"}.` : "No accounts to receive it yet.",
+        description:
+          (count > 0
+            ? `Delivered to ${count} account${count === 1 ? "" : "s"}.`
+            : "No accounts to receive it yet.") + bannerNote,
       });
       setTitle("");
       setMessage("");
@@ -85,6 +100,22 @@ const AdminNotifications = () => {
               onChange={(e) => setMessage(e.target.value)}
               rows={4}
               maxLength={1000}
+            />
+          </div>
+          <div className="rounded-lg border border-amber-400/40 bg-amber-400/5 p-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <Label htmlFor="important-switch" className="text-sm font-medium">
+                Important
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Also shows a big banner on every screen until each person dismisses it.
+              </p>
+            </div>
+            <Switch
+              id="important-switch"
+              checked={important}
+              onCheckedChange={setImportant}
+              className="data-[state=checked]:bg-amber-500 shrink-0"
             />
           </div>
           <Button onClick={handleSend} disabled={sending || !title.trim() || !message.trim()}>

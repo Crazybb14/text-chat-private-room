@@ -47,7 +47,7 @@ scenario(
     });
 
     await step('only the granted tabs are visible', async () => {
-      await expect(page.getByRole('tab', { name: 'Rooms' })).toBeVisible();
+      await expect(page.getByRole('tab', { name: 'Rooms', exact: true })).toBeVisible();
       await expect(page.getByRole('tab', { name: 'Messages' })).toBeVisible();
       await expect(page.getByRole('tab', { name: 'Settings' })).toHaveCount(0);
       await expect(page.getByRole('tab', { name: 'Direct Messages' })).toHaveCount(0);

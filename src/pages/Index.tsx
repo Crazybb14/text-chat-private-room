@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import PollCard from "@/components/PollCard";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -148,6 +149,7 @@ const Index = () => {
   const siteName = settingText(settings, "site_name") || "ChatRooms";
   const welcomeMessage = settingText(settings, "welcome_message");
   const announcement = settingText(settings, "announcement");
+  const rules = settingText(settings, "rules_text");
   const autoDeleteHours = settingNumber(settings, "auto_delete_hours");
   const roomNameMax = settingNumber(settings, "room_name_max_length") || 60;
   const showOnline = settingBool(settings, "show_online_status");
@@ -651,6 +653,17 @@ const Index = () => {
             </CardContent>
           </Card>
         )}
+
+        {rules && (
+          <Card className="border-white/10">
+            <CardContent className="py-3.5 space-y-1">
+              <p className="text-sm font-medium">Community rules</p>
+              <p className="text-sm text-muted-foreground whitespace-pre-line break-words">{rules}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        <PollCard username={username} />
 
         {shouldShowReload(reloadFlag.at, pageLoadedAt.current, reloadDismissedAt) && (
           <Card className="border-emerald-500/40 bg-emerald-500/5">

@@ -176,6 +176,22 @@ export const SETTING_DEFS: SettingDef[] = [
     description: "A banner on the home page and in every room. Leave empty to hide.",
   },
   {
+    key: "rules_text",
+    label: "Community rules",
+    group: "Site",
+    type: "text",
+    default: "",
+    description: "A rules card on the home page. Leave empty to hide. Edited on the Site Info tab.",
+  },
+  {
+    key: "terms_text",
+    label: "Terms of Use text",
+    group: "Site",
+    type: "text",
+    default: "",
+    description: "Replaces the Terms of Use page text. Edited on the Terms tab.",
+  },
+  {
     key: "maintenance_message",
     label: "Extra downtime message",
     group: "Site",

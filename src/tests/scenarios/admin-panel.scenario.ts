@@ -33,7 +33,7 @@ scenario(
     });
 
     await step('data tabs ask for sign-in when not signed in', async () => {
-      await page.getByRole('tab', { name: 'Rooms' }).click();
+      await page.getByRole('tab', { name: 'Rooms', exact: true }).click();
       await expect(page.getByText('Sign-in required').first()).toBeVisible();
     });
 

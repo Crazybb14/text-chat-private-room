@@ -3,6 +3,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
+import ImportantBanner from "@/components/ImportantBanner";
 import Login from "./pages/Login";
 import TermsOfUse from "./pages/TermsOfUse";
 import ChatRoom from "./pages/ChatRoom";
@@ -21,6 +22,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
+      <ImportantBanner />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />

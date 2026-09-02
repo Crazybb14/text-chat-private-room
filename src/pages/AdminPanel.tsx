@@ -99,6 +99,34 @@ import AdminAppeals from "@/components/AdminAppeals";
 import AdminAnalytics from "@/components/AdminAnalytics";
 import AdminAuditLog from "@/components/AdminAuditLog";
 import AdminMessageSearch from "@/components/AdminMessageSearch";
+import AdminPolls from "@/components/admin/AdminPolls";
+import AdminImportantNotices from "@/components/admin/AdminImportantNotices";
+import {
+  AdminTopChatters,
+  AdminRoomInsights,
+  AdminSignupTrends,
+} from "@/components/admin/AdminInsights";
+import {
+  AdminUserSearch,
+  AdminLocksTable,
+  AdminKickLog,
+  AdminDataExport,
+} from "@/components/admin/AdminAccountTools";
+import { AdminFriendsManager, AdminBios } from "@/components/admin/AdminSocialTabs";
+import { AdminRoomEditor, AdminEmptyRooms } from "@/components/admin/AdminRoomTools";
+import { AdminMessageCleanup, AdminWordTester } from "@/components/admin/AdminMessageTools";
+import {
+  AdminAnnouncementStats,
+  AdminCallHistory,
+  AdminDmStats,
+  AdminIpInsights,
+  AdminActivityFeed,
+} from "@/components/admin/AdminNotifTools";
+import {
+  AdminSiteInfo,
+  AdminTermsEditor,
+  AdminMaintenance,
+} from "@/components/admin/AdminSiteTools";
 import { formatDuration } from "@/lib/moderation";
 
 // still referenced by ban-history formatting below
@@ -1000,7 +1028,7 @@ const AdminPanel = () => {
             {can("people") && <TabsTrigger value="bans">Bans</TabsTrigger>}
             {can("people") && <TabsTrigger value="appeals">Appeals</TabsTrigger>}
             {can("messages") && <TabsTrigger value="search">Message Search</TabsTrigger>}
-            {can("messages") && <TabsTrigger value="analytics">Analytics</TabsTrigger>}
+            {can("analytics") && <TabsTrigger value="analytics">Analytics</TabsTrigger>}
             {isOwner && <TabsTrigger value="audit">Audit Log</TabsTrigger>}
             {can("people") && <TabsTrigger value="moderation">Moderation</TabsTrigger>}
             {can("people") && <TabsTrigger value="words">Bannable Words</TabsTrigger>}
@@ -1018,6 +1046,29 @@ const AdminPanel = () => {
             {can("settings") && <TabsTrigger value="settings">Settings</TabsTrigger>}
             {isOwner && <TabsTrigger value="download">Download</TabsTrigger>}
             {settingBool(settings, "ai_beta_enabled") && <TabsTrigger value="ai">AI (beta)</TabsTrigger>}
+            {can("rooms") && <TabsTrigger value="roomeditor">Room Editor</TabsTrigger>}
+            {can("rooms") && <TabsTrigger value="emptyrooms">Empty Rooms</TabsTrigger>}
+            {can("live") && <TabsTrigger value="activityfeed">Activity Feed</TabsTrigger>}
+            {can("calls") && <TabsTrigger value="callhistory">Call History</TabsTrigger>}
+            {can("messages") && <TabsTrigger value="cleanup">Message Cleanup</TabsTrigger>}
+            {can("analytics") && <TabsTrigger value="topchatters">Top Chatters</TabsTrigger>}
+            {can("analytics") && <TabsTrigger value="roominsights">Room Insights</TabsTrigger>}
+            {can("analytics") && <TabsTrigger value="signuptrends">Signup Trends</TabsTrigger>}
+            {can("dms") && <TabsTrigger value="dmstats">DM Stats</TabsTrigger>}
+            {can("accounts") && <TabsTrigger value="usersearch">User Search</TabsTrigger>}
+            {can("accounts") && <TabsTrigger value="locks">Locks</TabsTrigger>}
+            {can("accounts") && <TabsTrigger value="kicklog">Kick Log</TabsTrigger>}
+            {can("accounts") && <TabsTrigger value="dataexport">Data Export</TabsTrigger>}
+            {can("ips") && <TabsTrigger value="ipinsights">IP Insights</TabsTrigger>}
+            {can("people") && <TabsTrigger value="wordtester">Word Tester</TabsTrigger>}
+            {can("people") && <TabsTrigger value="bios">Bios</TabsTrigger>}
+            {can("social") && <TabsTrigger value="friends">Friends</TabsTrigger>}
+            {can("notifications") && <TabsTrigger value="important">Important Notices</TabsTrigger>}
+            {can("notifications") && <TabsTrigger value="notifstats">Announcement Stats</TabsTrigger>}
+            {can("polls") && <TabsTrigger value="polls">Polls</TabsTrigger>}
+            {can("settings") && <TabsTrigger value="siteinfo">Site Info</TabsTrigger>}
+            {can("settings") && <TabsTrigger value="terms">Terms</TabsTrigger>}
+            {can("settings") && <TabsTrigger value="maintenance">Maintenance</TabsTrigger>}
           </TabsList>
 
           {/* OVERVIEW */}
@@ -1989,7 +2040,12 @@ const AdminPanel = () => {
                       <CardTitle className="text-base">{group}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-5">
-                      {SETTING_DEFS.filter((def) => def.group === group).map((def) => (
+                      {SETTING_DEFS.filter(
+                        (def) =>
+                          def.group === group &&
+                          def.key !== "rules_text" &&
+                          def.key !== "terms_text",
+                      ).map((def) => (
                         <div key={def.key} className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
                             <p className="text-sm font-medium">{def.label}</p>
@@ -2161,7 +2217,7 @@ const AdminPanel = () => {
 
           {/* ANALYTICS — real usage charts */}
           <TabsContent value="analytics" className="space-y-4 mt-4">
-            {can("messages") ? <AdminAnalytics /> : NoPermission}
+            {can("analytics") ? <AdminAnalytics /> : NoPermission}
           </TabsContent>
 
           {/* MESSAGE SEARCH — search every room message */}
@@ -2172,6 +2228,125 @@ const AdminPanel = () => {
           {/* AUDIT LOG — owner only */}
           <TabsContent value="audit" className="space-y-4 mt-4">
             {isOwner ? <AdminAuditLog /> : NoPermission}
+          </TabsContent>
+
+          {/* ROOM EDITOR — rename rooms, flip voice, new codes */}
+          <TabsContent value="roomeditor" className="space-y-4 mt-4">
+            {can("rooms") ? <AdminRoomEditor /> : NoPermission}
+          </TabsContent>
+
+          {/* EMPTY ROOMS — clean up unused rooms */}
+          <TabsContent value="emptyrooms" className="space-y-4 mt-4">
+            {can("rooms") ? <AdminEmptyRooms /> : NoPermission}
+          </TabsContent>
+
+          {/* ACTIVITY FEED — everything happening, one stream */}
+          <TabsContent value="activityfeed" className="space-y-4 mt-4">
+            {can("live") ? <AdminActivityFeed /> : NoPermission}
+          </TabsContent>
+
+          {/* CALL HISTORY — past calls and who joined */}
+          <TabsContent value="callhistory" className="space-y-4 mt-4">
+            {can("calls") ? <AdminCallHistory /> : NoPermission}
+          </TabsContent>
+
+          {/* MESSAGE CLEANUP — purge old messages, clear a room */}
+          <TabsContent value="cleanup" className="space-y-4 mt-4">
+            {can("messages") ? <AdminMessageCleanup /> : NoPermission}
+          </TabsContent>
+
+          {/* TOP CHATTERS — leaderboard */}
+          <TabsContent value="topchatters" className="space-y-4 mt-4">
+            {can("analytics") ? <AdminTopChatters /> : NoPermission}
+          </TabsContent>
+
+          {/* ROOM INSIGHTS — traffic per room */}
+          <TabsContent value="roominsights" className="space-y-4 mt-4">
+            {can("analytics") ? <AdminRoomInsights /> : NoPermission}
+          </TabsContent>
+
+          {/* SIGNUP TRENDS — new accounts per day */}
+          <TabsContent value="signuptrends" className="space-y-4 mt-4">
+            {can("analytics") ? <AdminSignupTrends /> : NoPermission}
+          </TabsContent>
+
+          {/* DM STATS — busiest pairs and file totals */}
+          <TabsContent value="dmstats" className="space-y-4 mt-4">
+            {can("dms") ? <AdminDmStats /> : NoPermission}
+          </TabsContent>
+
+          {/* USER SEARCH — find by username, name, or IP */}
+          <TabsContent value="usersearch" className="space-y-4 mt-4">
+            {can("accounts") ? <AdminUserSearch /> : NoPermission}
+          </TabsContent>
+
+          {/* LOCKS — temporary account lockouts */}
+          <TabsContent value="locks" className="space-y-4 mt-4">
+            {can("accounts") ? <AdminLocksTable /> : NoPermission}
+          </TabsContent>
+
+          {/* KICK LOG — who was force-signed-out */}
+          <TabsContent value="kicklog" className="space-y-4 mt-4">
+            {can("accounts") ? <AdminKickLog /> : NoPermission}
+          </TabsContent>
+
+          {/* DATA EXPORT — CSV downloads */}
+          <TabsContent value="dataexport" className="space-y-4 mt-4">
+            {can("accounts") ? <AdminDataExport /> : NoPermission}
+          </TabsContent>
+
+          {/* IP INSIGHTS — shared-IP detection */}
+          <TabsContent value="ipinsights" className="space-y-4 mt-4">
+            {can("ips") ? <AdminIpInsights /> : NoPermission}
+          </TabsContent>
+
+          {/* WORD TESTER — try the ban rules */}
+          <TabsContent value="wordtester" className="space-y-4 mt-4">
+            {can("people") ? <AdminWordTester /> : NoPermission}
+          </TabsContent>
+
+          {/* BIOS — review and clear profile bios */}
+          <TabsContent value="bios" className="space-y-4 mt-4">
+            {can("people") ? <AdminBios /> : NoPermission}
+          </TabsContent>
+
+          {/* FRIENDS — see and remove friendships */}
+          <TabsContent value="friends" className="space-y-4 mt-4">
+            {can("social") ? <AdminFriendsManager /> : NoPermission}
+          </TabsContent>
+
+          {/* IMPORTANT NOTICES — the big banners */}
+          <TabsContent value="important" className="space-y-4 mt-4">
+            {can("notifications") ? (
+              <AdminImportantNotices createdBy={session?.username ?? "admin"} />
+            ) : (
+              NoPermission
+            )}
+          </TabsContent>
+
+          {/* ANNOUNCEMENT STATS — who read what */}
+          <TabsContent value="notifstats" className="space-y-4 mt-4">
+            {can("notifications") ? <AdminAnnouncementStats /> : NoPermission}
+          </TabsContent>
+
+          {/* POLLS — create polls, watch results */}
+          <TabsContent value="polls" className="space-y-4 mt-4">
+            {can("polls") ? <AdminPolls createdBy={session?.username ?? "admin"} /> : NoPermission}
+          </TabsContent>
+
+          {/* SITE INFO — home-screen text */}
+          <TabsContent value="siteinfo" className="space-y-4 mt-4">
+            {can("settings") ? <AdminSiteInfo /> : NoPermission}
+          </TabsContent>
+
+          {/* TERMS — edit the Terms of Use */}
+          <TabsContent value="terms" className="space-y-4 mt-4">
+            {can("settings") ? <AdminTermsEditor /> : NoPermission}
+          </TabsContent>
+
+          {/* MAINTENANCE — safe cleanups */}
+          <TabsContent value="maintenance" className="space-y-4 mt-4">
+            {can("settings") ? <AdminMaintenance /> : NoPermission}
           </TabsContent>
         </Tabs>
       </main>

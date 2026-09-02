@@ -6,14 +6,33 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FileText, Shield, AlertTriangle, Users, Lock, Eye, Ban, CheckCircle, XCircle, ArrowDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import db from "@/lib/shared/kliv-database.js";
 
 const TermsOfUse = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
   const [hasAccepted, setHasAccepted] = useState(false);
+  const [termsText, setTermsText] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Admins can replace the terms text from the admin panel (Terms tab).
+  useEffect(() => {
+    let cancelled = false;
+    db.query<{ setting_key: string; setting_value: string }>("admin_settings", {
+      setting_key: "eq.terms_text",
+    })
+      .then((rows) => {
+        if (!cancelled) setTermsText(String(rows[0]?.setting_value ?? ""));
+      })
+      .catch(() => {
+        if (!cancelled) setTermsText("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const getViewport = () =>
@@ -102,6 +121,11 @@ const TermsOfUse = () => {
               ref={scrollAreaRef}
               className="h-[500px] w-full pr-4"
             >
+              {termsText ? (
+                <div ref={contentRef} className="space-y-4 text-gray-300">
+                  <p className="whitespace-pre-wrap break-words leading-relaxed">{termsText}</p>
+                </div>
+              ) : (
               <div ref={contentRef} className="space-y-6 text-gray-300">
                 {/* Agreement Overview */}
                 <section>
@@ -375,6 +399,7 @@ const TermsOfUse = () => {
                   </p>
                 </section>
               </div>
+              )}
             </ScrollArea>
           </div>
 
