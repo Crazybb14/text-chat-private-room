@@ -189,28 +189,14 @@ const FREQ_ORDER = "ETAOINSHRDLCUMWFGYPBVKJXQZ".split("");
 
 /** Letters that could still appear, given the pattern and the misses so far. */
 function possibleLetters(word: string, revealed: string[], used: string[]): string[] {
+  const missed = used.filter((l) => !revealed.includes(l));
   const candidates = HM_WORDS.filter((entry) => {
     if (entry.word.length !== word.length) return false;
-    for (let i = 0; i < word.length; i++) {
-      const ch = word[i];
-      if (revealed.includes(ch) && entry.word[i] !== ch) return false;
-      if (!revealed.includes(ch) && revealed.length > 0 && entry.word[i] !== word[i]) {
-        // positions already revealed must match; other positions must not
-        if (entry.word[i] !== ch) {
-          // fall through to the used-letter check below
-        }
-      }
-    }
-    return true;
-  }).filter((entry) => {
-    // no word may contain a tried-and-missed letter
-    for (const l of used) {
-      if (!revealed.includes(l) && entry.word.includes(l)) return false;
-    }
-    // revealed letters must appear in the word at the right spots
+    // a missed letter cannot appear anywhere in the word
+    if (missed.some((l) => entry.word.includes(l))) return false;
+    // revealed letters must sit at exactly these positions
     for (let i = 0; i < word.length; i++) {
       if (revealed.includes(word[i]) && entry.word[i] !== word[i]) return false;
-      if (!revealed.includes(word[i]) && entry.word[i] === word[i]) return false;
     }
     return true;
   });

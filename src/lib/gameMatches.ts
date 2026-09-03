@@ -196,9 +196,10 @@ export function describeOutcome(row: GameMatchRow, username: string): string {
   const ms = parseMatchState(row);
   if (row.status === "open") return "Waiting for an opponent to join";
   if (row.status === "finished" || ms.phase === "done") {
-    if (ms.winner === "draw") return "Draw";
-    if (ms.winner) {
-      const winnerName = ms.winner === "p1" ? row.player1 : row.player2 ?? "the AI";
+    const winner = ms.winner ?? row.winner;
+    if (winner === "draw") return "Draw";
+    if (winner) {
+      const winnerName = winner === "p1" ? row.player1 : row.player2 ?? "the AI";
       return winnerName === username ? "You won" : `${winnerName} won`;
     }
     return "Finished";

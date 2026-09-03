@@ -64,6 +64,7 @@ scenario(
   "two admins play a multiplayer match",
   {
     setup: {
+      users: { ada: {}, ben: {} },
       database: [{ table: "admin_users", rows: [adminRow("ada"), adminRow("ben")] }],
     },
   },

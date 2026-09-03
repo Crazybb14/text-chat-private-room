@@ -63,7 +63,7 @@ export default function GameChatPanel({ matchId, me, opponent }: Props) {
         </p>
       </CardHeader>
       <CardContent className="flex flex-col flex-1 gap-2 min-h-0">
-        <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 max-h-[380px]" aria-label="game chat messages">
+        <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 max-h-[380px]" aria-label="match chat log">
           {messages.length === 0 && (
             <p className="text-xs text-muted-foreground">Say gg, coordinate, or trash talk — it stays between you two.</p>
           )}

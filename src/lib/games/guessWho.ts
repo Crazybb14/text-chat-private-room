@@ -25,7 +25,7 @@ export const GW_CHARS: GwChar[] = [
   { name: "Heidi", female: true, blonde: false, red: false, dark: true, glasses: false, hat: false, beard: false, mustache: false, smile: true, earrings: false },
   { name: "Iris", female: true, blonde: false, red: false, dark: true, glasses: true, hat: true, beard: false, mustache: false, smile: false, earrings: false },
   { name: "Jade", female: true, blonde: false, red: false, dark: true, glasses: false, hat: false, beard: false, mustache: false, smile: true, earrings: true },
-  { name: "Kate", female: true, blonde: false, red: false, dark: true, glasses: false, hat: false, beard: false, mustache: false, smile: true, earrings: false },
+  { name: "Kate", female: true, blonde: false, red: false, dark: true, glasses: false, hat: false, beard: false, mustache: false, smile: false, earrings: false },
   { name: "Lily", female: true, blonde: false, red: false, dark: true, glasses: false, hat: true, beard: false, mustache: false, smile: true, earrings: true },
   { name: "Max", female: false, blonde: true, red: false, dark: false, glasses: true, hat: false, beard: false, mustache: false, smile: true, earrings: false },
   { name: "Noah", female: false, blonde: true, red: false, dark: false, glasses: false, hat: true, beard: false, mustache: false, smile: false, earrings: false },

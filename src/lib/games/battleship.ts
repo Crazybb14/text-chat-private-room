@@ -205,8 +205,6 @@ export function bsAiFire(target: BsSide, difficulty: Difficulty): number | null 
   const unsunk = target.ships.filter((s) => !bsSunk(s));
   if (unsunk.length === 0) return null;
 
-  const firedNums = fired.map(Number);
-
   if (difficulty === "easy") {
     return Math.floor(Math.random() * BS_SIZE * BS_SIZE);
   }

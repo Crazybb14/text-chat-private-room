@@ -84,7 +84,7 @@ describe("hangman", () => {
         }
       }
       expect(ms.winner).toBe("p2");
-      expect(ms.game.wrongP2.length).toBeLessThanOrEqual(3);
+      expect(ms.game.wrongP2.length).toBeLessThan(HM_MISS_LIMIT.hard);
     }
   });
 });

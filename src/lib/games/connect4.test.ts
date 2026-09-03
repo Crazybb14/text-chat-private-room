@@ -54,9 +54,9 @@ describe("connect four", () => {
     const { ms } = play([
       ["p1", 3], ["p2", 0],
       ["p1", 3], ["p2", 0],
-      ["p1", 3], ["p2", 1],
+      ["p1", 3],
     ]);
-    // p1 has three stacked in column 3; p2 must block
+    // p1 has three stacked in column 3 and it's p2's turn — p2 must block
     const move = c4AiMove(ms, "p2", "hard");
     expect(move).toBe(3);
   });

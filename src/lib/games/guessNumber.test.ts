@@ -25,15 +25,15 @@ describe("guess the number", () => {
     res = applyGn(ms, "p2", { kind: "setSecret", value: 10 });
     if (res.ok) ms = res.state as MatchState<GnState>;
 
-    res = applyGn(ms, "p1", { guess: 20 }); // 20 > 10
+    res = applyGn(ms, "p1", { kind: "guess", guess: 20 }); // 20 > 10
     if (res.ok) ms = res.state as MatchState<GnState>;
     expect(ms.game.guessesP1[0].result).toBe("high");
 
-    res = applyGn(ms, "p2", { guess: 5 }); // 5 < 30
+    res = applyGn(ms, "p2", { kind: "guess", guess: 5 }); // 5 < 30
     if (res.ok) ms = res.state as MatchState<GnState>;
     expect(ms.game.guessesP2[0].result).toBe("low");
 
-    res = applyGn(ms, "p1", { guess: 10 });
+    res = applyGn(ms, "p1", { kind: "guess", guess: 10 });
     expect(res.ok).toBe(true);
     if (res.ok) {
       expect(res.state.winner).toBe("p1");
@@ -67,12 +67,12 @@ describe("guess the number", () => {
     let guard = 0;
     while (ms.phase === "playing" && guard++ < 20) {
       if (ms.turn === "p1") {
-        const move = gnAiMove(ms, "p1", "impossible") as { guess: number };
+        const move = gnAiMove(ms, "p1", "impossible") as { kind: string; guess: number };
         const res = applyGn(ms, "p1", move);
         if (!res.ok) break;
         ms = res.state as MatchState<GnState>;
       } else {
-        const res = applyGn(ms, "p2", { guess: 1 });
+        const res = applyGn(ms, "p2", { kind: "guess", guess: 1 });
         if (!res.ok) break;
         ms = res.state as MatchState<GnState>;
       }

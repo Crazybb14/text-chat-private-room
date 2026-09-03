@@ -62,11 +62,15 @@ export function createGn(difficulty: Difficulty): MatchState<GnState> {
   };
 }
 
-function isGnMove(move: unknown): move is { kind: "setSecret"; value: number } | { guess: number } {
+/** A move is either locking in your secret or guessing the other player's. */
+export type GnMove = { kind: "setSecret"; value: number } | { kind: "guess"; guess: number };
+
+function isGnMove(move: unknown): move is GnMove {
   if (typeof move !== "object" || move === null) return false;
   const m = move as Record<string, unknown>;
   if (m.kind === "setSecret") return typeof m.value === "number";
-  return typeof m.guess === "number";
+  if (m.kind === "guess") return typeof m.guess === "number";
+  return false;
 }
 
 export function applyGn(ms: MatchState<GnState>, role: Role, move: unknown): MoveResult {
@@ -134,15 +138,15 @@ export function gnAiMove(ms: MatchState<GnState>, role: Role, difficulty: Diffic
   const rand = (): number => min + Math.floor(Math.random() * Math.max(1, max - min + 1));
 
   if (difficulty === "easy") {
-    return { guess: inRange(g.min + Math.floor(Math.random() * (g.max - g.min + 1))) };
+    return { kind: "guess", guess: inRange(g.min + Math.floor(Math.random() * (g.max - g.min + 1))) };
   }
   if (difficulty === "medium") {
-    if (Math.random() < 0.25) return { guess: inRange(rand()) };
-    return { guess: inRange(midpoint + (Math.random() < 0.2 ? 1 : 0)) };
+    if (Math.random() < 0.25) return { kind: "guess", guess: inRange(rand()) };
+    return { kind: "guess", guess: inRange(midpoint + (Math.random() < 0.2 ? 1 : 0)) };
   }
   if (difficulty === "hard") {
-    if (Math.random() < 0.08) return { guess: inRange(midpoint + Math.floor(Math.random() * 5) - 2) };
-    return { guess: midpoint };
+    if (Math.random() < 0.08) return { kind: "guess", guess: inRange(midpoint + Math.floor(Math.random() * 5) - 2) };
+    return { kind: "guess", guess: midpoint };
   }
-  return { guess: midpoint };
+  return { kind: "guess", guess: midpoint };
 }

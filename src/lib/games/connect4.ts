@@ -99,7 +99,6 @@ const COL_ORDER = [3, 2, 4, 1, 5, 0, 6];
 function search(board: (Role | null)[], depth: number, turn: Role, me: Role, alpha: number, beta: number): number {
   const { winner } = c4WinnerCells(board);
   if (winner) {
-    if (winner === "draw") return 0;
     return winner === me ? 100000 - (10 - depth) : -100000 + (10 - depth);
   }
   if (depth === 0) return evaluate(board, me);

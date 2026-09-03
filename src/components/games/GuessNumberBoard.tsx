@@ -113,7 +113,7 @@ export default function GuessNumberBoard({ ms, myRole, canMove, onMove, difficul
           placeholder={`Guess ${g.min}–${g.max}`}
           onKeyDown={(e) => {
             if (e.key === "Enter" && guess.trim() && canMove) {
-              onMove({ guess: Number(guess) });
+              onMove({ kind: "guess", guess: Number(guess) });
               setGuess("");
             }
           }}
@@ -121,7 +121,7 @@ export default function GuessNumberBoard({ ms, myRole, canMove, onMove, difficul
         <Button
           disabled={!canMove || !guess.trim()}
           onClick={() => {
-            onMove({ guess: Number(guess) });
+            onMove({ kind: "guess", guess: Number(guess) });
             setGuess("");
           }}
         >
