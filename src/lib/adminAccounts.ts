@@ -12,6 +12,7 @@ export const ADMIN_ABILITIES = [
   { key: "downtime", label: "Downtime", description: "Take the site down for maintenance" },
   { key: "settings", label: "Site settings", description: "Change site-wide settings" },
   { key: "polls", label: "Polls", description: "Create polls and see live results" },
+  { key: "gaming", label: "Games", description: "Play games in the panel and watch game chat" },
   { key: "social", label: "Friends & bios", description: "See friendships and clear profile bios" },
   { key: "analytics", label: "Analytics", description: "Usage charts, leaderboards, and trends" },
 ] as const;

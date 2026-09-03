@@ -102,6 +102,7 @@ import AdminAnalytics from "@/components/AdminAnalytics";
 import AdminAuditLog from "@/components/AdminAuditLog";
 import AdminMessageSearch from "@/components/AdminMessageSearch";
 import AdminPolls from "@/components/admin/AdminPolls";
+import AdminGaming from "@/components/games/AdminGaming";
 import AdminImportantNotices from "@/components/admin/AdminImportantNotices";
 import {
   AdminTopChatters,
@@ -1129,6 +1130,7 @@ const AdminPanel = () => {
             {can("notifications") && <TabsTrigger value="important">Important Notices</TabsTrigger>}
             {can("notifications") && <TabsTrigger value="notifstats">Announcement Stats</TabsTrigger>}
             {can("polls") && <TabsTrigger value="polls">Polls</TabsTrigger>}
+            {can("gaming") && <TabsTrigger value="gaming">Gaming</TabsTrigger>}
             {can("settings") && <TabsTrigger value="siteinfo">Site Info</TabsTrigger>}
             {can("settings") && <TabsTrigger value="terms">Terms</TabsTrigger>}
             {can("settings") && <TabsTrigger value="maintenance">Maintenance</TabsTrigger>}
@@ -2489,6 +2491,11 @@ const AdminPanel = () => {
           {/* POLLS — create polls, watch results */}
           <TabsContent value="polls" className="space-y-4 mt-4">
             {can("polls") ? <AdminPolls createdBy={session?.username ?? "admin"} /> : NoPermission}
+          </TabsContent>
+
+          {/* GAMING — play games with a side chat */}
+          <TabsContent value="gaming" className="mt-4">
+            {can("gaming") ? <AdminGaming username={session?.username ?? ""} /> : NoPermission}
           </TabsContent>
 
           {/* SITE INFO — home-screen text */}
